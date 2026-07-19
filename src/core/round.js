@@ -1,22 +1,23 @@
 // Round pipeline: simultaneous planning (actions collected per company) then deterministic
 // phased resolution. Initiative rotates every round and is the only tie-breaker.
+//
+// Split into beginPlanningPhase / resolveRound so an interactive UI can drive planning with
+// direct applyAction() calls (immediate validated feedback per player, same function the
+// headless tests use — no second logic path) and then resolve once both players submit.
+// playRound() is unchanged in signature/behavior and is kept as the thin headless wrapper the
+// simulator and existing tests already call — same round++/resetBudgets/apply/resolve order.
 import { resetBudgets, applyAction } from './actions.js';
 import { resolveMarketing, resolveSellIn, resolveConsumers, resolveFinance } from './systems.js';
 import { TUNING } from './data/roles-v1.js';
 
-// plans: { [companyId]: Action[] } — all companies' plans submitted together (no ordering
-// advantage: PLAN application per company only touches that company's own budgets/org).
-export function playRound(state, plans) {
+export function beginPlanningPhase(state) {
   state.round++;
   state.phase = 'PLAN';
   resetBudgets(state);
   for (const co of state.companies) { co._finance = { revenue: 0, cogs: 0, logistics: 0, salaries: 0, rent: 0 }; }
-  const results = [];
-  for (const co of state.companies) {
-    for (const action of plans[co.id] || []) {
-      results.push({ companyId: co.id, action: action.type, ...applyAction(state, { ...action, companyId: co.id }) });
-    }
-  }
+}
+
+export function resolveRound(state) {
   state.phase = 'MARKET'; resolveMarketing(state);
   state.phase = 'SELL-IN'; resolveSellIn(state);
   state.phase = 'CONSUME'; resolveConsumers(state);
@@ -36,5 +37,18 @@ export function playRound(state, plans) {
     state.eventLog.push({ t: 'GameEnd', round: state.round, winnerId: state.winnerId, standings: ranked.map((c) => ({ id: c.id, rev: +c.cumulativeRevenue.toFixed(0), cash: +c.cash.toFixed(0) })) });
   }
   state.initiativeIndex = (state.initiativeIndex + 1) % state.companies.length;
+}
+
+// plans: { [companyId]: Action[] } — all companies' plans submitted together (no ordering
+// advantage: PLAN application per company only touches that company's own budgets/org).
+export function playRound(state, plans) {
+  beginPlanningPhase(state);
+  const results = [];
+  for (const co of state.companies) {
+    for (const action of plans[co.id] || []) {
+      results.push({ companyId: co.id, action: action.type, ...applyAction(state, { ...action, companyId: co.id }) });
+    }
+  }
+  resolveRound(state);
   return results;
 }
