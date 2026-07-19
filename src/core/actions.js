@@ -8,6 +8,13 @@ function reject(state, action, reason) {
   state.eventLog.push({ t: 'ActionRejected', round: state.round, action: action.type, companyId: action.companyId, reason });
   return { ok: false, reason };
 }
+// Plan-time spending (hires, training, campaigns, HQ setup) is booked into the same
+// per-round _finance ledger resolveFinance() emits, so the round summary can explain the
+// FULL cash delta — not just resolution-time costs. Guarded: some tests drive actions
+// without beginPlanningPhase, where _finance doesn't exist yet.
+function bookCost(co, key, amount) {
+  if (co._finance) co._finance[key] = (co._finance[key] || 0) + amount;
+}
 function accept(state, action, extra = {}) {
   state.eventLog.push({ t: 'Action', round: state.round, ...action, ...extra });
   return { ok: true };
@@ -42,6 +49,7 @@ export function applyAction(state, action) {
       if (state.companies.some((c) => c.hqPlotId === action.plotId)) return reject(state, action, 'plot taken');
       if (co.cash < plot.setupCost) return reject(state, action, 'insufficient cash for setup');
       co.cash -= plot.setupCost;
+      bookCost(co, 'other', plot.setupCost);
       co.hqPlotId = plot.id; co.x = plot.x; co.y = plot.y;
       return accept(state, action);
     }
@@ -54,6 +62,7 @@ export function applyAction(state, action) {
       const headcount = co.employees.length - 1;
       if (headcount + 1 > caps['org.subordinate_capacity']) return reject(state, action, 'organization capacity full (need managers)');
       co.cash -= cost;
+      bookCost(co, 'other', cost);
       co.employees.push({ id: `e-${co.id}-${co.employees.length}`, roleId: action.roleId, skills: {} });
       co._budget.recruits--;
       resetCompanyCaps(co);
@@ -71,6 +80,7 @@ export function applyAction(state, action) {
       const cost = skill.costPerLevel[cur];
       if (co.cash < cost) return reject(state, action, 'insufficient cash to train');
       co.cash -= cost;
+      bookCost(co, 'other', cost);
       emp.skills[action.skillId] = cur + 1;
       resetCompanyCaps(co);
       return accept(state, action, { cost });
@@ -97,6 +107,7 @@ export function applyAction(state, action) {
       if (!CITY_V1.districts.some((d) => d.id === action.districtId)) return reject(state, action, 'unknown district');
       if (co.cash < TUNING.campaignCost) return reject(state, action, 'insufficient cash for campaign');
       co.cash -= TUNING.campaignCost;
+      bookCost(co, 'marketing', TUNING.campaignCost);
       co._budget.campaigns--;
       co._plans.campaigns.push({ districtId: action.districtId });
       return accept(state, action);

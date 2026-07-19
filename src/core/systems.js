@@ -4,7 +4,7 @@ import { CITY_V1, PROFILES, TUNING, byId, rngFor } from './state.js';
 import { POSITIONS } from './data/roles-v1.js';
 
 const dist2 = (a, b) => Math.abs(a.x - b.x) + Math.abs(a.y - b.y);
-const ensureFinance = (co) => (co._finance ??= { revenue: 0, cogs: 0, logistics: 0, salaries: 0, rent: 0 });
+const ensureFinance = (co) => (co._finance ??= { revenue: 0, cogs: 0, logistics: 0, salaries: 0, rent: 0, marketing: 0, other: 0 });
 
 // ---------- MARKET phase: campaigns write awareness ledgers (never sales) ----------
 export function resolveMarketing(state) {
