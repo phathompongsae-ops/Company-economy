@@ -2,7 +2,7 @@
 // Required test suite — real assertions over the headless simulation. Exit 0 = all pass.
 import assert from 'node:assert';
 import { createInitialState, CITY_V1, PROFILES, byId } from '../src/core/state.js';
-import { playRound } from '../src/core/round.js';
+import { playRound, beginPlanningPhase, resolveRound } from '../src/core/round.js';
 import { resetBudgets, applyAction } from '../src/core/actions.js';
 import { resolveConsumers, resolveMarketing, resolveSellIn, productUtility, estimateDemand, storeScore } from '../src/core/systems.js';
 import { computeCapabilities } from '../src/core/capabilities.js';
@@ -270,6 +270,143 @@ test('victory: revenue target triggers final round; winner is highest cumulative
   if (trig) assert(r.rounds === trig.finalRound, 'final round honored');
   const best = Math.max(r.revA, r.revB);
   assert([r.revA, r.revB].indexOf(best) === (r.winner === 'balanced' ? 0 : 1));
+});
+
+// ============================================================================================
+// Interactive Hot-Seat integration tests — the UI drives beginPlanningPhase() + direct
+// applyAction() calls per player-turn instead of playRound()'s single-call plans dict.
+// These prove that split is behaviorally IDENTICAL to the headless path (no second logic).
+// ============================================================================================
+
+// 20. Hot-seat equivalence: same seed + same action sequence, immediate-apply vs batched
+test('hot-seat: beginPlanningPhase+applyAction(per player)+resolveRound matches playRound exactly', () => {
+  const seed = 77;
+  // path A: headless batched (existing architecture)
+  const stateA = createInitialState(seed);
+  const [a0, a1] = stateA.companies;
+  const plansA = {
+    [a0.id]: [{ type: 'ChooseCompanyLocation', plotId: 'plot-central' }, { type: 'SetProductPosition', position: 'mainstream' }, { type: 'SetPrice', productId: `p-${a0.id}-0`, price: 14 }, { type: 'HireEmployee', roleId: 'sales' }],
+    [a1.id]: [{ type: 'ChooseCompanyLocation', plotId: 'plot-outer-west' }, { type: 'SetProductPosition', position: 'economy' }, { type: 'SetPrice', productId: `p-${a1.id}-0`, price: 8 }, { type: 'HireEmployee', roleId: 'sales' }],
+  };
+  playRound(stateA, plansA);
+
+  // path B: interactive hot-seat — player 1 plans fully (direct applyAction calls), THEN
+  // player 2 plans fully (their actions must not see/affect player 1's private plan state),
+  // then a single resolveRound() call — exactly what ui/hotseat.js does per round.
+  const stateB = createInitialState(seed);
+  const [b0, b1] = stateB.companies;
+  beginPlanningPhase(stateB);
+  for (const act of plansA[a0.id]) applyAction(stateB, { ...act, companyId: b0.id, productId: act.productId && `p-${b0.id}-0` });
+  for (const act of plansA[a1.id]) applyAction(stateB, { ...act, companyId: b1.id, productId: act.productId && `p-${b1.id}-0` });
+  resolveRound(stateB);
+
+  const strip2 = (s) => JSON.stringify({ ...s, eventLog: s.eventLog.map((e) => ({ ...e, companyId: e.companyId?.replace(/co-\d/, 'co-X') })) });
+  assert.equal(stateA.round, stateB.round);
+  assert.equal(stateA.companies[0].cash.toFixed(2), stateB.companies[0].cash.toFixed(2));
+  assert.equal(stateA.companies[1].cash.toFixed(2), stateB.companies[1].cash.toFixed(2));
+  assert.equal(stateA.companies[0].cumulativeRevenue.toFixed(2), stateB.companies[0].cumulativeRevenue.toFixed(2));
+  assert.equal(stateA.stores.map((s) => s.shelf.length).join(','), stateB.stores.map((s) => s.shelf.length).join(','));
+});
+
+// 21. Turn isolation: Player 1's queued (unresolved) plans/budget are never visible to or
+// mutable by Player 2's actions on a DIFFERENT company — each action is company-scoped.
+test('hot-seat: turn isolation — company A actions never touch company B state', () => {
+  const state = createInitialState(21);
+  const [A, B] = state.companies;
+  beginPlanningPhase(state);
+  applyAction(state, { companyId: A.id, type: 'ChooseCompanyLocation', plotId: 'plot-central' });
+  applyAction(state, { companyId: A.id, type: 'SetProductPosition', position: 'premium' });
+  applyAction(state, { companyId: A.id, type: 'HireEmployee', roleId: 'marketing' });
+  applyAction(state, { companyId: A.id, type: 'LaunchMarketing', districtId: 'central' });
+  const bSnapshotBefore = JSON.stringify({ cash: B.cash, employees: B.employees, products: B.products, hqPlotId: B.hqPlotId, awareness: B.awareness });
+  // switch to player 2 — nothing about A's turn should have touched B
+  assert.equal(JSON.stringify({ cash: B.cash, employees: B.employees, products: B.products, hqPlotId: B.hqPlotId, awareness: B.awareness }), bSnapshotBefore);
+  assert.equal(B.hqPlotId, null, 'company B must still be unset after company A acted');
+  assert.equal(B.employees.length, 1, 'company B must still have only its president');
+  // B can still independently pick the SAME kind of plot A didn't take, or get rejected for a taken one
+  const takeCentral = applyAction(state, { companyId: B.id, type: 'ChooseCompanyLocation', plotId: 'plot-central' });
+  assert(!takeCentral.ok && /taken/.test(takeCentral.reason), 'B must be rejected from A\'s already-chosen plot with a clear reason');
+  const takeOuter = applyAction(state, { companyId: B.id, type: 'ChooseCompanyLocation', plotId: 'plot-outer-west' });
+  assert(takeOuter.ok);
+});
+
+// 22. Action submission: HireEmployee/UpgradeSkill mutate immediately + permanently within
+// planning (unlike Pitch/Campaign/Shipment, which only queue into _plans for resolution).
+test('hot-seat: immediate-apply actions (hire/skill/price) persist correctly into resolution', () => {
+  const state = createInitialState(22);
+  const co = state.companies[0];
+  beginPlanningPhase(state);
+  applyAction(state, { companyId: co.id, type: 'ChooseCompanyLocation', plotId: 'plot-central' });
+  const cashAfterHq = co.cash;
+  applyAction(state, { companyId: co.id, type: 'HireEmployee', roleId: 'hr' });
+  assert.equal(co.employees.length, 2, 'hire must be immediately visible mid-planning');
+  assert(co.cash < cashAfterHq, 'hiring cost must be deducted immediately');
+  resolveRound(state);
+  assert.equal(co.employees.length, 2, 'hired employee must survive into resolution (unless insolvent)');
+});
+
+// 23. Player switching: alternating applyAction calls for two companies within one planning
+// window never double-applies or drops an action (result count matches attempts).
+test('hot-seat: player switching mid-round never double-applies or drops actions', () => {
+  const state = createInitialState(23);
+  const [A, B] = state.companies;
+  beginPlanningPhase(state);
+  const seq = [
+    () => applyAction(state, { companyId: A.id, type: 'ChooseCompanyLocation', plotId: 'plot-central' }),
+    () => applyAction(state, { companyId: B.id, type: 'ChooseCompanyLocation', plotId: 'plot-outer-west' }),
+    () => applyAction(state, { companyId: A.id, type: 'HireEmployee', roleId: 'sales' }),
+    () => applyAction(state, { companyId: B.id, type: 'HireEmployee', roleId: 'sales' }),
+    () => applyAction(state, { companyId: A.id, type: 'SetProductPosition', position: 'mainstream' }),
+    () => applyAction(state, { companyId: B.id, type: 'SetProductPosition', position: 'economy' }),
+  ];
+  const results = seq.map((fn) => fn());
+  assert(results.every((r) => r.ok), 'every alternating action must succeed exactly once');
+  assert.equal(A.employees.length, 2); assert.equal(B.employees.length, 2);
+  assert.equal(A.products.length, 1); assert.equal(B.products.length, 1);
+  const hireEvents = state.eventLog.filter((e) => e.t === 'Action' && e.type === 'HireEmployee');
+  assert.equal(hireEvents.length, 2, 'exactly one Hire event per company — no double-apply');
+});
+
+// 24. Victory UI state: state.finished/winnerId/finalRound are reachable through the
+// beginPlanningPhase+applyAction+resolveRound path exactly like through playRound.
+test('hot-seat: victory state (finished/winnerId/finalRound) reachable via interactive path', () => {
+  const state = createInitialState(24);
+  const [A, B] = state.companies;
+  const policyA = (r) => (r === 1 ? [{ type: 'ChooseCompanyLocation', plotId: 'plot-central' }, { type: 'SetProductPosition', position: 'mainstream' }, { type: 'SetPrice', productId: `p-${A.id}-0`, price: 14 }, { type: 'HireEmployee', roleId: 'sales' }] : []);
+  const policyB = (r) => (r === 1 ? [{ type: 'ChooseCompanyLocation', plotId: 'plot-outer-west' }, { type: 'SetProductPosition', position: 'economy' }, { type: 'SetPrice', productId: `p-${B.id}-0`, price: 8 }, { type: 'HireEmployee', roleId: 'sales' }] : []);
+  let guard = 0;
+  while (!state.finished && guard++ < 30) {
+    beginPlanningPhase(state);
+    for (const act of policyA(state.round)) applyAction(state, { ...act, companyId: A.id });
+    for (const act of policyB(state.round)) applyAction(state, { ...act, companyId: B.id });
+    resolveRound(state);
+  }
+  assert(state.finished, 'match must reach a finished state via the interactive path');
+  assert(state.winnerId === A.id || state.winnerId === B.id);
+  assert(state.eventLog.some((e) => e.t === 'GameEnd'));
+});
+
+// 25. Determinism preserved: the SAME seed run twice through the interactive path (same
+// action sequence) must produce byte-identical economic results — UI/replay adds no drift.
+test('hot-seat: determinism preserved through the interactive planning path', () => {
+  function run(seed) {
+    const state = createInitialState(seed);
+    const [A, B] = state.companies;
+    beginPlanningPhase(state);
+    applyAction(state, { companyId: A.id, type: 'ChooseCompanyLocation', plotId: 'plot-commercial' });
+    applyAction(state, { companyId: A.id, type: 'SetProductPosition', position: 'premium' });
+    applyAction(state, { companyId: A.id, type: 'SetPrice', productId: `p-${A.id}-0`, price: 24 });
+    applyAction(state, { companyId: A.id, type: 'HireEmployee', roleId: 'marketing' });
+    applyAction(state, { companyId: A.id, type: 'LaunchMarketing', districtId: 'east' });
+    applyAction(state, { companyId: B.id, type: 'ChooseCompanyLocation', plotId: 'plot-outer-west' });
+    applyAction(state, { companyId: B.id, type: 'SetProductPosition', position: 'economy' });
+    applyAction(state, { companyId: B.id, type: 'SetPrice', productId: `p-${B.id}-0`, price: 8 });
+    applyAction(state, { companyId: B.id, type: 'HireEmployee', roleId: 'sales' });
+    resolveRound(state);
+    return { revA: +A.cumulativeRevenue.toFixed(4), revB: +B.cumulativeRevenue.toFixed(4), cashA: +A.cash.toFixed(4), cashB: +B.cash.toFixed(4), shelves: state.stores.map((s) => s.shelf.length) };
+  }
+  const r1 = run(99), r2 = run(99);
+  assert.deepEqual(r1, r2, 'identical seed + identical interactive action sequence must be byte-identical');
 });
 
 let passed = 0;
