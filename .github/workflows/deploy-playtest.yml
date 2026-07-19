@@ -1,0 +1,49 @@
+# Playtest deployment — GitHub Pages.
+# Registered on the default branch so workflow_dispatch is available; the deployed
+# content is checked out from the playtest branch (see DEPLOY_REF), which contains
+# the full static game (no build step, no bundler, no secrets).
+name: Deploy Playtest to GitHub Pages
+
+on:
+  push:
+    branches: [feature/playtest-build-v1]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: pages
+  cancel-in-progress: true
+
+env:
+  DEPLOY_REF: feature/playtest-build-v1
+
+jobs:
+  test-and-deploy:
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ env.DEPLOY_REF }}
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Run full test suite (39 tests, no dependencies to install)
+        run: node tests/run-tests.mjs
+      - name: Configure Pages (creates/enables the site on first run)
+        uses: actions/configure-pages@v5
+        with:
+          enablement: true
+      - name: Upload site (repository root — the game is served as-is)
+        uses: actions/upload-pages-artifact@v3
+        with:
+          path: .
+      - name: Deploy
+        id: deployment
+        uses: actions/deploy-pages@v4
