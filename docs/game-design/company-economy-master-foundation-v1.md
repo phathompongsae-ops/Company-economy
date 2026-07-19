@@ -1,4 +1,9 @@
-# Company Economy — Master Game Foundation v1
+# Company Economy — Master Game Foundation v1 (SUPERSEDED by v2)
+
+> **SUPERSEDED:** `company-economy-master-foundation-v2.md` is the authoritative source of
+> truth. v2 corrects the consumer model (real agents with homes, not aggregate pools with
+> display-only walkers), makes the map a strategic board with an HQ-location opening
+> decision, and adds the hotel/tourist market. Unchanged systems are re-confirmed in v2.
 
 **The source of truth for Phase 0.** Working title: *Company Economy* — a 2.5D pixel-art
 business strategy / company builder for 2–4 players (online-ready). Systems-level

@@ -96,3 +96,44 @@ Scope: Phase 0 foundation decisions. Assumptions made autonomously are marked [A
 - **Reason**: concrete tuning seeds required for docs/prototype math to be testable; all
   flagged as seeds, not commitments.
 - **Revisit**: continuously in playtest; the numbers are knobs by design.
+
+---
+
+# v2 additions (Foundation + Playable Simulation round)
+
+## 14. VISION CORRECTION — consumers are real economic agents, not aggregate pools
+- **Decision**: replace the v1 aggregate zone-demand model with 20–60 real consumer agents
+  (home building, 4-axis preferences, travel radius, per-round discrete purchase decision);
+  visual walkers now replay real `PurchaseEvent`s of real agent IDs.
+- **Reason**: new Source-of-Truth directive — the map must be a strategic board and NPCs must
+  participate in the economy; the v1 interpretation was explicitly overruled.
+- **Alternatives**: keep aggregate + fake walkers (banned); per-frame agent AI (over-simulation, banned).
+- **Revisit**: agent count scaling (city growth) once UI phase lands.
+
+## 15. [A] Distance metric = Manhattan tile distance
+- **Reason**: deterministic, pathfinding-free, explainable; road-graph swap lives behind `dist()`.
+- **Revisit**: when the road network becomes visually meaningful in the UI phase.
+
+## 16. [A] Awareness scoped per district; consumers read their home district's ledger
+- **Reason**: gives marketing area targeting + natural segment fit without a zone economy.
+- **Revisit**: per-building awareness if districts prove too coarse.
+
+## 17. [A] Single retail price; store margin = fixed 25% share
+- **Reason**: smallest price model that still powers store margin scoring; wholesale
+  negotiation reserved as a Sales verb later.
+- **Revisit**: when Negotiate becomes a distinct action.
+
+## 18. [A] Best-candidate choice (argmax + seeded noise) instead of softmax share-splitting
+- **Reason**: each agent buys one place per round — individually explainable; noise keeps
+  outcomes from being knife-edge deterministic.
+- **Revisit**: if store monocultures appear at scale (balance report risk 5).
+
+## 19. [A] Tourists rotate fully each round (no returning tourists)
+- **Reason**: hotels as refreshing demand, zero loyalty bookkeeping.
+- **Revisit**: multi-round tourist stays if hotel strategies need more depth.
+
+## 20. Tuning pass seeds (committed): operations salaries 45, unit costs 3/5/9,
+budget qty 2, tourists 5/hotel (budget qty 3), buyThreshold 0.30, revenue target 2400.
+- **Reason**: first pass made margins livable and games end in 8–14 rounds; recorded in the
+  balance report with league evidence.
+- **Revisit**: continuously; numbers are knobs by design.
