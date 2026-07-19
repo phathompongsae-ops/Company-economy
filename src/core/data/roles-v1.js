@@ -64,14 +64,17 @@ export const SKILLS = {
 
 // Product positions (1 category: beverage). Company revenue share = 75% of retail price
 // (store keeps 25% as margin) — single-price V1 simplification, logged in decision log.
+// unitCost re-tuned when COGS became a real cash cost (it was ledger-only before): the
+// old numbers were calibrated for a world where production never left cash, and made
+// every org's fixed costs unpayable from the city's total demand pool.
 export const POSITIONS = {
-  economy:    { unitCost: 3,  priceRange: [6, 12],  quality: 30 },
-  mainstream: { unitCost: 5,  priceRange: [10, 18], quality: 60 },
-  premium:    { unitCost: 9, priceRange: [18, 30], quality: 90 },
+  economy:    { unitCost: 2, priceRange: [5, 12],  quality: 30 },  // floor 5: dumping stays possible AND stays thin
+  mainstream: { unitCost: 3, priceRange: [10, 18], quality: 60 },
+  premium:    { unitCost: 6, priceRange: [18, 30], quality: 90 },
 };
 
 export const TUNING = {
-  startingCash: 1000,
+  startingCash: 1300,   // raised from 1000 when COGS became a real cash cost (working capital)
   storeMarginShare: 0.25,
   buyThreshold: 0.30,
   softmaxNoise: 0.04,          // tiny seeded per-decision noise; keeps determinism per seed

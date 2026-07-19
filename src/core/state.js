@@ -7,7 +7,10 @@ import { makeRng } from './rng.js';
 let uid = 0;
 const nid = (p) => `${p}-${(++uid).toString(36)}`;
 
-export function createInitialState(seed, companyNames = ['Alpha', 'Bravo']) {
+// rulesOverrides exists for TEST/BALANCE-LAB CONFIG ONLY (e.g. a lower revenueTarget so an
+// accelerated browser playtest reaches victory quickly). Production UI never passes it —
+// the shipped balance always comes from TUNING.
+export function createInitialState(seed, companyNames = ['Alpha', 'Bravo'], rulesOverrides = {}) {
   uid = 0;
   const rng = makeRng(seed);
   // Real resident consumer agents: every building spawns its population with a home.
@@ -42,11 +45,22 @@ export function createInitialState(seed, companyNames = ['Alpha', 'Bravo']) {
   return {
     seed, round: 0, phase: 'SETUP', rngCursor: Math.floor(rng() * 1e9),
     initiativeIndex: 0,
+    rules: { revenueTarget: TUNING.revenueTarget, maxRounds: TUNING.maxRounds, ...rulesOverrides },
     companies, stores, consumers,
     touristsThisRound: [],
     eventLog: [], debugLog: [],
     finished: false, finalRound: null, winnerId: null,
   };
+}
+
+// ---- save/resume: GameState is pure JSON data, so (de)serialization is a straight
+// round-trip. Scratch fields (_plans/_caps/_budget/_finance) are plain data too and are
+// rebuilt by beginPlanningPhase anyway; round-boundary saves never depend on them.
+export function serializeState(state) { return JSON.stringify(state); }
+export function deserializeState(json) {
+  const state = JSON.parse(json);
+  if (!state.rules) state.rules = { revenueTarget: TUNING.revenueTarget, maxRounds: TUNING.maxRounds };
+  return state;
 }
 
 export function rngFor(state) {

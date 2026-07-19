@@ -14,7 +14,7 @@ export function beginPlanningPhase(state) {
   state.round++;
   state.phase = 'PLAN';
   resetBudgets(state);
-  for (const co of state.companies) { co._finance = { revenue: 0, cogs: 0, logistics: 0, salaries: 0, rent: 0 }; }
+  for (const co of state.companies) { co._finance = { revenue: 0, cogs: 0, logistics: 0, salaries: 0, rent: 0, marketing: 0, other: 0 }; }
 }
 
 export function resolveRound(state) {
@@ -23,12 +23,15 @@ export function resolveRound(state) {
   state.phase = 'CONSUME'; resolveConsumers(state);
   state.phase = 'FINANCE'; resolveFinance(state);
 
-  // victory: revenue target triggers a final full round for everyone (equal rounds)
-  if (state.finalRound === null && state.companies.some((c) => c.cumulativeRevenue >= TUNING.revenueTarget)) {
+  // victory: revenue target triggers a final full round for everyone (equal rounds).
+  // Targets come from state.rules (falls back to TUNING for pre-rules saved states) so
+  // test/balance configs can shorten matches without touching production balance.
+  const rules = state.rules || TUNING;
+  if (state.finalRound === null && state.companies.some((c) => c.cumulativeRevenue >= rules.revenueTarget)) {
     state.finalRound = state.round + 1;
     state.eventLog.push({ t: 'FinalRoundTriggered', round: state.round, finalRound: state.finalRound });
   }
-  if ((state.finalRound !== null && state.round >= state.finalRound) || state.round >= TUNING.maxRounds) {
+  if ((state.finalRound !== null && state.round >= state.finalRound) || state.round >= rules.maxRounds) {
     state.finished = true;
     const ranked = [...state.companies].sort((a, b) =>
       b.cumulativeRevenue - a.cumulativeRevenue || b.cash - a.cash || b.unitsSoldTotal - a.unitsSoldTotal ||

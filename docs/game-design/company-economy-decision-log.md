@@ -137,3 +137,54 @@ budget qty 2, tourists 5/hotel (budget qty 3), buyThreshold 0.30, revenue target
 - **Reason**: first pass made margins livable and games end in 8–14 rounds; recorded in the
   balance report with league evidence.
 - **Revisit**: continuously; numbers are knobs by design.
+
+---
+
+## Full Playable Game v1 additions (autonomous work package)
+
+## 13. COGS is a real cash cost, paid at shipment
+- **Reason**: a new cash-conservation test exposed that COGS was booked to the finance
+  ledger but never deducted from cash — production was free in cash terms, which quietly
+  invalidated every margin tradeoff and the anti-inflation goal. Paying at shipment (not
+  at sale) creates working-capital pressure and makes overstocking a real risk.
+- **Alternatives**: keep ledger-only COGS (rejected: fake economy); pay per unit SOLD
+  (rejected: removes inventory risk, weakens logistics decisions).
+- **Revisit**: if human playtests find round-1 cash too punishing, revisit startingCash
+  before touching the COGS model.
+
+## 14. Rebalance for real COGS: startingCash 1300, unitCost 2/3/6, economy floor 5
+- **Reason**: old numbers were calibrated for free production; with real COGS the city's
+  total demand pool couldn't fund any org. Smallest-lever sequence validated by lab
+  batches after each step (see balance report v2 §6).
+- **Revisit**: with any change to city population or store margin share.
+
+## 15. Bot fairness boundary = "what a hot-seat human sees on screen"
+- **Reason**: cash/revenue are on the shared topbar and shelves are public, so bots may
+  read them; relationships and queued plans are not rendered for other players, so bots
+  may not. Test-enforced (test 30).
+- **Alternatives**: full-state bots (cheating), fog-of-war economy (out of v1 scope).
+
+## 16. [A] Bots plan at their initiative seat, inline in the same turn cycle
+- **Reason**: removes systematic "bot plans last" information advantage; initiative
+  rotation already exists and is the game's only ordering mechanism.
+- **Alternatives**: bots always last (unfair), simultaneous secret bot planning (equal
+  to seat-order under public-info-only reads, but harder to debug).
+
+## 17. [A] Victory stays cumulative-revenue with final-round trigger (unchanged from
+  Foundation v2) even though it structurally favors high-price archetypes
+- **Reason**: it is the established Foundation model; the lab shows price-volume still
+  wins 40% of 4-company matches, so the disadvantage is situational, not fatal.
+- **Revisit**: if human play consistently shows economy positioning is unfun to pilot,
+  consider profit-based or hybrid scoring in v2 (a design-identity change — user call).
+
+## 18. [A] Selling-phase truth linkage: every walker IS a PurchaseEvent; zero ambient
+  fake shoppers in v1
+- **Reason**: the task forbids fake purchases; an empty-handed "atmosphere crowd" risks
+  reading as buyers. v1 ships with economic agents only; ambient decoration can be added
+  later with clearly non-consumer visuals (birds, cars).
+
+## 19. [A] Save granularity = round boundary (post-resolution) only
+- **Reason**: smallest correct save; mid-planning saves would have to serialize partial
+  turn privacy and pending device-pass state for hot-seat, disproportionate for v1.
+- **Revisit**: if sessions prove longer than expected, add mid-planning autosave for the
+  active company only.

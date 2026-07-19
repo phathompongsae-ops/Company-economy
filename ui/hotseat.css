@@ -71,3 +71,21 @@ input[type=text], input[type=number], select { background: #1f232c; color: #e8ea
 
 #toast { position: fixed; left: 50%; bottom: 18px; transform: translateX(-50%); background: #22262f; border: 1px solid #3c4456;
   padding: 8px 14px; border-radius: 8px; font-size: 13px; z-index: 60; max-width: 80vw; text-align: center; }
+
+/* ---- Full Playable v1 additions ---- */
+.world-pop { position: fixed; transform: translate(-50%, -100%); font: 700 12px/1.2 system-ui, sans-serif;
+  color: #ffe9a8; text-shadow: 0 1px 2px #000; pointer-events: none; z-index: 35; display: none; white-space: nowrap; }
+.world-pop.pop-buy { color: #9fe8b8; }
+.world-pop.pop-good { color: #7fe0a0; }
+.world-pop.pop-bad { color: #e08f7f; }
+.world-pop.pop-deliver { color: #9fc8e8; }
+.world-pop.pop-campaign { color: #e8c89f; }
+
+#sellingHud { position: fixed; left: 50%; transform: translateX(-50%); bottom: 16px; width: min(560px, 94vw); }
+.progress-outer { height: 8px; background: #22262f; border-radius: 4px; margin-top: 8px; overflow: hidden; }
+.progress-inner { height: 100%; width: 0%; background: linear-gradient(90deg, #3f6fe0, #7fe0a0); border-radius: 4px; }
+
+.summary-card { flex: 1; min-width: 240px; }
+.finline { border-top: 1px solid #262b36; margin-top: 6px; padding-top: 4px; }
+.finrow { border-bottom: 1px dashed #22262f; padding: 1px 0; }
+#topbar .tb-active { outline: 1px solid #ffe066; border-radius: 4px; padding: 2px 6px; }
