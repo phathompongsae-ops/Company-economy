@@ -1,0 +1,105 @@
+name: Coco Independent Full-Game Audit
+
+on:
+  push:
+    branches:
+      - coco/full-game-audit-v1
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  independent-audit:
+    runs-on: ubuntu-latest
+    timeout-minutes: 35
+    steps:
+      - name: Checkout exact audit branch
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Verify strict repository isolation
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$GITHUB_REPOSITORY" = "phathompongsae-ops/Company-economy"
+          test "$(git remote | wc -l | tr -d ' ')" = "1"
+          test "$(git remote | tr -d '\r')" = "origin"
+          origin="$(git remote get-url origin)"
+          case "$origin" in
+            https://github.com/phathompongsae-ops/Company-economy|https://github.com/phathompongsae-ops/Company-economy.git) ;;
+            *) echo "Unexpected origin: $origin"; exit 1 ;;
+          esac
+          test "$(git worktree list --porcelain | grep -c '^worktree ')" = "1"
+          test -z "$(find . -mindepth 2 -type d -name .git -print -quit)"
+          test -z "$(git status --porcelain)"
+          printf 'repository=%s\norigin=%s\nworkdir=%s\nhead=%s\n' \
+            "$GITHUB_REPOSITORY" "$origin" "$PWD" "$(git rev-parse HEAD)"
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Establish artifacts directory
+        run: mkdir -p artifacts/screenshots
+
+      - name: Run baseline test suite
+        shell: bash
+        run: |
+          set -o pipefail
+          { time node tests/run-tests.mjs; } 2>&1 | tee artifacts/baseline-tests.log
+
+      - name: Run JavaScript syntax checks
+        shell: bash
+        run: |
+          set -euo pipefail
+          while IFS= read -r file; do node --check "$file"; done < <(find src ui tests -type f \( -name '*.js' -o -name '*.mjs' \) | sort)
+
+      - name: Run deterministic balance smoke
+        shell: bash
+        run: |
+          set -o pipefail
+          { time node src/sim/lab.js --all --seeds 5; } 2>&1 | tee artifacts/balance-smoke.log
+
+      - name: Install browser audit dependency
+        run: |
+          npm install --no-save --no-package-lock playwright@1.54.1
+          npx playwright install --with-deps chromium
+
+      - name: Start static server
+        shell: bash
+        run: |
+          python3 -m http.server 8080 > artifacts/server.log 2>&1 &
+          echo $! > artifacts/server.pid
+          for i in $(seq 1 30); do
+            if curl -fsS http://127.0.0.1:8080/ >/dev/null; then exit 0; fi
+            sleep 1
+          done
+          cat artifacts/server.log
+          exit 1
+
+      - name: Run independent browser playthroughs
+        env:
+          CE_BASE_URL: http://127.0.0.1:8080/
+        shell: bash
+        run: |
+          set -o pipefail
+          { time node tests/coco-browser-audit.mjs; } 2>&1 | tee artifacts/browser-audit.log
+
+      - name: Package exact audited source snapshot
+        if: always()
+        shell: bash
+        run: |
+          tar --exclude=.git --exclude=node_modules --exclude=artifacts/repo-snapshot.tgz -czf artifacts/repo-snapshot.tgz .
+          git status --short > artifacts/post-audit-git-status.txt
+          git rev-parse HEAD > artifacts/audited-head.txt
+
+      - name: Upload independent audit evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: coco-independent-audit-evidence
+          path: artifacts/
+          if-no-files-found: error
+          retention-days: 14
