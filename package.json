@@ -1,0 +1,11 @@
+{
+  "name": "company-economy",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "Company Economy — business strategy prototype. Core simulation is headless; Three.js renders only.",
+  "scripts": {
+    "simulate": "node src/sim/run.js",
+    "test": "node tests/run-tests.mjs"
+  }
+}
