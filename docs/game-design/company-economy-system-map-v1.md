@@ -1,7 +1,10 @@
 # Company Economy — System Map v1
 
-How every system feeds the next. Companion to `company-economy-core-design-v1.md` (section
-references in parentheses).
+How every system feeds the next. Companion to `company-economy-master-foundation-v1.md`
+(section numbers in parentheses refer to that document's topics; the flow below is
+President → Organization → Capabilities → Product Strategy → Marketing → Awareness/Demand
+→ Sales → Store Access → Logistics → Availability → Consumer Purchase → Revenue →
+Reinvestment → Company Growth).
 
 ## The engine loop
 
