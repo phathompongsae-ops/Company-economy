@@ -585,6 +585,7 @@ function renderSetup() {
   const card = el('div', { class: 'card' }, [
     el('h2', {}, 'Company Economy'),
     el('p', { class: 'small' }, 'A competitive business strategy game on one small city. 2–4 companies — humans and bots — fight for shelves, customers, and revenue. Choose your HQ, build your organization, read the market, and out-compete everyone.'),
+    el('p', { class: 'small', style: 'color:#7fe0a0' }, 'Recommended first test: keep the defaults below (you vs 1 bot) and press Start Match.'),
     save ? el('div', { class: 'employee-row', style: 'border-color:#3f6fe0' }, [
       el('div', { class: 'row between' }, [
         el('b', {}, `Saved match — round ${JSON.parse(save.state).round}, ${save.config.slots.length} companies`),
