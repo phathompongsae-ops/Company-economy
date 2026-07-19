@@ -90,7 +90,11 @@ export function resolveSellIn(state) {
         continue;
       }
       slot.stock += sh.units;
-      ensureFinance(co).cogs += sh.units * POSITIONS[byId(co.products, sh.productId).position].unitCost;
+      // COGS is a REAL cash cost paid when goods ship (fix: it was ledger-only before,
+      // which made production free in cash terms and broke every margin tradeoff)
+      const goodsCost = sh.units * POSITIONS[byId(co.products, sh.productId).position].unitCost;
+      co.cash -= goodsCost;
+      ensureFinance(co).cogs += goodsCost;
       state.eventLog.push({ t: 'DeliveryEvent', round: state.round, companyId: co.id, storeId: store.id, units: sh.units });
     }
   }

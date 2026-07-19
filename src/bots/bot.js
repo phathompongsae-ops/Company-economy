@@ -137,7 +137,10 @@ export function decideBotActions(view, arch) {
       const under = Math.min(...rivalPrices) - 1;
       target = Math.max(lo + 1, Math.min(under, bandPrice(p.position, arch.priceBandPoint)));
       why = `undercut rival ${Math.min(...rivalPrices)} while keeping margin`;
-      if (target * (1 - TUNING.storeMarginShare) - POSITIONS[p.position].unitCost < 1.2) { target = p.price; why = null; }
+      // margin floor scales with real unit cost: undercutting below ~1.5x COGS per unit
+      // can't fund payroll no matter the volume — cheap, not suicidal
+      const marginFloor = Math.max(1.2, POSITIONS[p.position].unitCost * 1.5);
+      if (target * (1 - TUNING.storeMarginShare) - POSITIONS[p.position].unitCost < marginFloor) { target = p.price; why = null; }
     } else {
       // demand signal from own shelf history: everywhere sold out => raise; nothing sold => trim
       let soldOut = 0, slots = 0, sold = 0;
@@ -166,11 +169,24 @@ export function decideBotActions(view, arch) {
     manager: () => co.employees.length - 1 >= caps['org.subordinate_capacity'] - 1,
     hr: () => budget.cash > reserve + 400 && caps['org.recruit_slots'] < 2,
   };
+  // payroll must be earned: after the bootstrap rounds, only grow the org if last
+  // round's revenue actually supports the bigger payroll (org size follows market
+  // capture, not hope) — this is what keeps mid-market archetypes solvent now that
+  // production is a real cash cost
+  let revenueLastRound = 0;
+  for (const s of view.stores) for (const h of Object.values(s.ownHistory)) revenueLastRound += (h.unitsLastRound || 0);
+  revenueLastRound *= (co.products[0]?.price ?? 10) * (1 - TUNING.storeMarginShare);
+  const currentSalaries = co.employees.reduce((s, e) => s + ROLES[e.roleId].salary, 0);
   for (const roleId of arch.hirePriority) {
     if (emergency) break;
     if (budget.recruits <= 0) break;
     if (roleId !== 'sales' && roleCount(roleId) >= 1) continue; // one of each support role is plenty in v1
     if (roleId === 'sales' && roleCount('sales') >= 2) continue;
+    // growth must be funded by EITHER proven revenue OR a real capital buffer — poor
+    // companies earn first; cash-rich ones may invest ahead of revenue
+    const revenueSupports = revenueLastRound * 0.85 >= currentSalaries + ROLES[roleId].salary + 20;
+    const capitalSupports = budget.cash - Math.round(ROLES[roleId].hiringCost * caps['hiring.cost_mult']) >= reserve + 250;
+    if (view.round > 2 && !revenueSupports && !capitalSupports) continue;
     if (!needRole[roleId]()) continue;
     const cost = Math.round(ROLES[roleId].hiringCost * caps['hiring.cost_mult']);
     // the new hire's salary runs every round from now on — cover it over the same
@@ -255,20 +271,39 @@ export function decideBotActions(view, arch) {
         .sort((a, b) => (b.s.ownHistory[b.sl.productId]?.unitsLastRound || 0) - (a.s.ownHistory[a.sl.productId]?.unitsLastRound || 0) || (a.s.id < b.s.id ? -1 : 1))
         .slice(0, 3)
     : owned;
+  // Shipping burns real cash NOW (goods + freight); the stock usually sells THIS round.
+  // Working-capital rule: ship only if cash after cost plus a conservative sell-through
+  // estimate stays above water — dead stores were already filtered out above.
+  const unitCost = POSITIONS[prod.position].unitCost;
+  const shipCashCost = (units, s) => units * unitCost + TUNING.shipmentBaseCost + d2(co, s) * TUNING.shipmentPerTile;
+  const netRevPerUnit = prod.price * (1 - TUNING.storeMarginShare);
+  let shippedAny = false;
   for (const o of restockList) {
     if (budget.shipments <= 0) break;
     if (o.deficit <= 2) continue;
-    const units = Math.min(TUNING.shipmentMaxUnits, Math.max(10, Math.ceil(o.expected)));
+    const proven = (o.s.ownHistory[o.sl.productId]?.unitsLastRound || 0) > 0;
+    // poverty-trap escape: a proven seller with positive unit margin is the ONLY way
+    // back to solvency — always allow one small restock there even when underwater
+    const units = (!shippedAny && proven && budget.cash < 0)
+      ? 12
+      : Math.min(TUNING.shipmentMaxUnits, Math.max(10, Math.ceil(o.expected)));
+    const projected = budget.cash - shipCashCost(units, o.s) + 0.6 * Math.min(units, o.expected) * netRevPerUnit;
+    if (projected < 0 && !(proven && !shippedAny && netRevPerUnit > POSITIONS[prod.position].unitCost)) continue;
     say({ type: 'AssignLogistics', storeId: o.s.id, productId: o.sl.productId, units },
       `${emergency ? 'EMERGENCY restock proven seller' : 'restock'} ${o.s.name}: stock ${o.sl.stock} < expected ${Math.round(o.expected)}`);
     budget.shipments--;
+    budget.cash -= shipCashCost(units, o.s);
+    shippedAny = true;
   }
   const specAllowed = emergency ? 0 : view.round === 1 ? Math.min(2, budget.shipments) : arch.speculativeShipments;
   for (const s of pitched.slice(0, specAllowed)) {
     if (budget.shipments <= 0) break;
+    const projected = budget.cash - shipCashCost(18, s) + 0.3 * 18 * netRevPerUnit; // unproven store: assume weak sell-through
+    if (projected < 0) continue;
     say({ type: 'AssignLogistics', storeId: s.id, productId: prod.id, units: 18 },
       `speculative stock for pitched ${s.name} (${view.round === 1 ? 'round-1 land grab' : 'archetype appetite'})`);
     budget.shipments--;
+    budget.cash -= shipCashCost(18, s);
   }
 
   // ---- Campaigns: highest-opportunity districts ----

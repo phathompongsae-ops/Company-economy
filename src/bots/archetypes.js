@@ -26,7 +26,7 @@ export const ARCHETYPES = {
   price_leader: {
     id: 'price_leader', label: 'Price Leader',
     position: 'economy',
-    priceBandPoint: 0.25,       // cheap but NOT the dumping floor — margin still matters
+    priceBandPoint: 0.45,       // clearly cheapest in town, but priced to fund an org — not the dumping floor
     hirePriority: ['sales', 'logistics', 'manager', 'marketing', 'hr'],
     skillPriority: ['logistics.delivery_capacity', 'sales.pitch_capacity', 'logistics.range'],
     campaignAppetite: 0.2,
