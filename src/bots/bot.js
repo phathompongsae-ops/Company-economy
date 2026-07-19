@@ -107,6 +107,9 @@ export function decideBotActions(view, arch) {
   const emergency = budget.cash < reserve * 0.6;
 
   // ---- Round 1: HQ + product + price ----
+  // The HQ action is only QUEUED here (applied by the driver in order) — all distance
+  // math below must plan from the plot we are about to take, not from co.x (still null).
+  let plannedPos = { x: co.x, y: co.y };
   if (!co.hqPlotId) {
     const ranked = CITY_V1.hqPlots
       .filter((p) => !view.takenPlots.has(p.id))
@@ -117,6 +120,7 @@ export function decideBotActions(view, arch) {
       say({ type: 'ChooseCompanyLocation', plotId: p.id },
         `HQ ${p.name}: access ${s.storeAccess}, pop ${s.population}, tourists ${s.tourists}, cost ${s.cost} (weights: ${arch.id})`);
       budget.cash -= p.setupCost;
+      plannedPos = { x: p.x, y: p.y };
     }
   }
   if (!co.products.length) {
@@ -219,7 +223,7 @@ export function decideBotActions(view, arch) {
   // ---- Pitches: best off-shelf stores in logistics range ----
   const range = caps['logistics.range'];
   const pitchCandidates = view.stores
-    .filter((s) => d2(co, s) <= range && !s.shelf.some((sl) => sl.companyId === co.id))
+    .filter((s) => d2(plannedPos, s) <= range && !s.shelf.some((sl) => sl.companyId === co.id))
     .map((s) => {
       const demand = view.estimateOwnDemand(s.id, prod);
       const crowd = s.shelf.length / s.shelfCapacity;
@@ -246,7 +250,7 @@ export function decideBotActions(view, arch) {
   const covered = new Set();
   for (const { s, why } of coverageTargets) {
     if (covered.has(s.id)) continue;
-    const l = co.hqPlotId ? salesLoad(co, s) : 1;
+    const l = d2(plannedPos, s) > TUNING.salesFarDistance ? TUNING.salesFarLoad : 1;
     if (load + l > budget.accountCapacity) continue;
     say({ type: 'AssignSales', storeId: s.id }, `${why} at ${s.name}`);
     covered.add(s.id); load += l;
@@ -275,7 +279,7 @@ export function decideBotActions(view, arch) {
   // Working-capital rule: ship only if cash after cost plus a conservative sell-through
   // estimate stays above water — dead stores were already filtered out above.
   const unitCost = POSITIONS[prod.position].unitCost;
-  const shipCashCost = (units, s) => units * unitCost + TUNING.shipmentBaseCost + d2(co, s) * TUNING.shipmentPerTile;
+  const shipCashCost = (units, s) => units * unitCost + TUNING.shipmentBaseCost + d2(plannedPos, s) * TUNING.shipmentPerTile;
   const netRevPerUnit = prod.price * (1 - TUNING.storeMarginShare);
   let shippedAny = false;
   for (const o of restockList) {
