@@ -188,3 +188,23 @@ budget qty 2, tourists 5/hotel (budget qty 3), buyThreshold 0.30, revenue target
   turn privacy and pending device-pass state for hot-seat, disproportionate for v1.
 - **Revisit**: if sessions prove longer than expected, add mid-planning autosave for the
   active company only.
+
+## 20. [RC] Audit findings re-verified independently; fixes implemented in-branch, audit branch never merged
+- **Reason**: project policy forbids adopting audit changes automatically; every finding
+  from the external full-playable audit was reproduced with fresh scripts on the RC
+  branch before any fix, then fixed in this branch's own code with its own regression
+  tests (see docs/qa/release-candidate-v1.md).
+- **Alternatives**: cherry-picking the audit branch (rejected: unreviewed external code
+  path, and the policy explicitly forbids it).
+
+## 21. [RC] Invalid action inputs are rejected before any budget/slot is consumed
+- **Reason**: a rejected action must be free — consuming a shipment slot on a rejected
+  AssignLogistics silently taxed the player for a validation failure. Validation order
+  is now: identity checks → input checks → THEN resource decrements.
+- **Revisit**: never; this is an invariant for all future action types.
+
+## 22. [RC] PurchaseEvent identity: deterministic eventId, walkers carry visualId
+- **Reason**: "every walker IS a real purchase" (decision 18) becomes verifiable only if
+  each walker links to exactly one PurchaseEvent; `pe-r<round>-<seq>` is stable across
+  save/resume and identical for identical seeds. Timeline keeps an index-based fallback
+  so saves made before this change still replay.

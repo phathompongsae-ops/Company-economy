@@ -33,9 +33,14 @@ export function resolveRound(state) {
   }
   if ((state.finalRound !== null && state.round >= state.finalRound) || state.round >= rules.maxRounds) {
     state.finished = true;
+    // Last-resort tie-break: cyclic distance from the current initiative holder. Unlike a
+    // "is a the initiative holder?" check this is a consistent total order (antisymmetric for
+    // every pair), so the sort result is well-defined even with 3+ fully tied companies.
+    const n = state.companies.length;
+    const initiativeRank = new Map(state.companies.map((c, i) => [c.id, (i - state.initiativeIndex + n) % n]));
     const ranked = [...state.companies].sort((a, b) =>
       b.cumulativeRevenue - a.cumulativeRevenue || b.cash - a.cash || b.unitsSoldTotal - a.unitsSoldTotal ||
-      (state.companies[state.initiativeIndex].id === a.id ? -1 : 1));
+      initiativeRank.get(a.id) - initiativeRank.get(b.id));
     state.winnerId = ranked[0].id;
     state.eventLog.push({ t: 'GameEnd', round: state.round, winnerId: state.winnerId, standings: ranked.map((c) => ({ id: c.id, rev: +c.cumulativeRevenue.toFixed(0), cash: +c.cash.toFixed(0) })) });
   }

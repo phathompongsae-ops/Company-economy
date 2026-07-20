@@ -36,7 +36,14 @@ input[type=text], input[type=number], select { background: #1f232c; color: #e8ea
 .row.between { justify-content: space-between; }
 .row.wrap { flex-wrap: wrap; }
 .stack { display: flex; flex-direction: column; gap: 8px; }
-.grid2 { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+/* minmax(0,1fr) lets grid children shrink below content width (a bare 1fr track cannot),
+   so wide summary tables wrap instead of overflowing narrow viewports */
+.grid2 { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 8px; min-width: 0; }
+.grid2 > * { min-width: 0; overflow-wrap: anywhere; }
+/* nested cards must size to their grid track — .overlay .card's fixed width is for the
+   outer dialog card only and would otherwise force each summary card to 480px */
+.overlay .grid2 > .card { width: auto; }
+@media (max-width: 700px) { .grid2 { grid-template-columns: minmax(0, 1fr); } }
 .pill { display: inline-block; padding: 2px 8px; border-radius: 999px; background: #232838; font-size: 11px; }
 .pill.ok { background: #1f3d28; color: #7fe0a0; }
 .pill.bad { background: #3d1f1f; color: #e07f7f; }

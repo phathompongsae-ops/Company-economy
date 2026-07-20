@@ -662,6 +662,108 @@ test('counterplay: mid-match leader does not always win across the lab batch', (
   assert(results.some((r) => !r.comeback), 'leads must still matter — not pure chaos');
 });
 
+// ============================================================================================
+// Release Candidate v1 regression tests. Findings were independently reproduced on this
+// branch before fixing (see docs/qa/full-playable-v1-independent-audit.md on the
+// coco/full-playable-v1-bug-audit branch for the original report); fixes and these tests
+// were implemented independently here.
+// ============================================================================================
+
+// 40. BLOCKER: SetPrice must reject non-finite prices (NaN previously bypassed the band check)
+test('regression: SetPrice rejects NaN/Infinity/non-numeric and leaves price unchanged', () => {
+  const s = createInitialState(101);
+  const co = setupCo(s, 0, 'plot-central', 'mainstream', 14);
+  const pid = co.products[0].id;
+  for (const bad of [NaN, Infinity, -Infinity, 'abc', undefined, {}]) {
+    const r = applyAction(s, { companyId: co.id, type: 'SetPrice', productId: pid, price: bad });
+    assert(!r.ok, `price ${String(bad)} must be rejected`);
+    assert.equal(co.products[0].price, 14, 'price must be unchanged after a rejection');
+  }
+  assert(applyAction(s, { companyId: co.id, type: 'SetPrice', productId: pid, price: 15 }).ok);
+  assert.equal(co.products[0].price, 15);
+});
+
+// 41. BLOCKER: AssignLogistics must reject non-positive-integer units WITHOUT consuming a slot
+test('regression: AssignLogistics rejects invalid units without consuming a shipment slot', () => {
+  const s = createInitialState(102);
+  const co = setupCo(s, 0, 'plot-central', 'mainstream', 14);
+  const pid = co.products[0].id;
+  const dist = (st) => Math.abs(co.x - st.x) + Math.abs(co.y - st.y);
+  const store = [...s.stores].sort((a, b) => dist(a) - dist(b))[0];
+  const slots0 = co._budget.shipments;
+  for (const bad of [-100, 0, 0.5, -0.5, Infinity, NaN, 'abc']) {
+    const r = applyAction(s, { companyId: co.id, type: 'AssignLogistics', storeId: store.id, productId: pid, units: bad });
+    assert(!r.ok, `units ${String(bad)} must be rejected`);
+    assert.equal(co._budget.shipments, slots0, 'a rejected shipment must not consume a slot');
+    assert.equal(co._plans.shipments.length, 0, 'no shipment recorded on rejection');
+  }
+  assert(applyAction(s, { companyId: co.id, type: 'AssignLogistics', storeId: store.id, productId: pid, units: 12 }).ok);
+  assert.equal(co._plans.shipments[0].units, 12);
+  assert(applyAction(s, { companyId: co.id, type: 'AssignLogistics', storeId: store.id, productId: pid }).ok, 'omitted units defaults to the max');
+  assert.equal(co._plans.shipments[1].units, TUNING.shipmentMaxUnits);
+  const capped = applyAction(s, { companyId: co.id, type: 'AssignLogistics', storeId: store.id, productId: pid, units: 100000 });
+  if (capped.ok) assert.equal(co._plans.shipments[2].units, TUNING.shipmentMaxUnits, 'explicit units capped at the max');
+});
+
+// 42. IMPORTANT: final-standings tie-break must be a consistent total order (the old
+// initiative check violated comparator antisymmetry for non-initiative tied pairs)
+test('regression: full-tie final standings are a consistent cyclic initiative order', () => {
+  const s = createInitialState(103, ['A', 'B', 'C'], { maxRounds: 1, revenueTarget: 999999 });
+  beginPlanningPhase(s);
+  resolveRound(s);
+  assert(s.finished, 'maxRounds=1 must finish the match');
+  const end = s.eventLog.find((e) => e.t === 'GameEnd');
+  assert.equal(end.standings.length, 3);
+  assert.equal(new Set(end.standings.map((x) => x.id)).size, 3, 'each company exactly once');
+  assert.equal(s.winnerId, s.companies[0].id, 'fully tied => initiative holder wins');
+
+  const s2 = createInitialState(104, ['A', 'B', 'C', 'D'], { maxRounds: 1, revenueTarget: 999999 });
+  beginPlanningPhase(s2);
+  s2.initiativeIndex = 2;
+  resolveRound(s2);
+  const end2 = s2.eventLog.find((e) => e.t === 'GameEnd');
+  assert.deepEqual(end2.standings.map((x) => x.id), [2, 3, 0, 1].map((i) => s2.companies[i].id),
+    'fully tied 4-way => cyclic order starting at the initiative holder');
+});
+
+// 43. IMPORTANT: every PurchaseEvent carries a unique deterministic eventId, and every
+// timeline walker links back to exactly one PurchaseEvent via eventId/visualId
+test('regression: PurchaseEvent eventIds unique + deterministic; walkers carry visualId linkage', () => {
+  const s = createInitialState(105, ['A', 'B']);
+  beginPlanningPhase(s);
+  runBotTurn(s, s.companies[0], 'balanced_operator');
+  runBotTurn(s, s.companies[1], 'price_leader');
+  const evStart = s.eventLog.length;
+  resolveRound(s);
+  const roundEvents = s.eventLog.slice(evStart);
+  const purchases = roundEvents.filter((e) => e.t === 'PurchaseEvent');
+  assert(purchases.length > 0, 'round must have purchases');
+  assert(purchases.every((e) => typeof e.eventId === 'string' && e.eventId.length > 0), 'every PurchaseEvent has an eventId');
+  assert.equal(new Set(purchases.map((e) => e.eventId)).size, purchases.length, 'eventIds are unique');
+
+  const s2 = createInitialState(105, ['A', 'B']);
+  beginPlanningPhase(s2);
+  runBotTurn(s2, s2.companies[0], 'balanced_operator');
+  runBotTurn(s2, s2.companies[1], 'price_leader');
+  resolveRound(s2);
+  assert.deepEqual(s2.eventLog.filter((e) => e.t === 'PurchaseEvent').map((e) => e.eventId),
+    purchases.map((e) => e.eventId), 'same seed => same eventIds');
+
+  const ctx = {
+    companyPos: Object.fromEntries(s.companies.map((c) => [c.id, { x: c.x, y: c.y }])),
+    storePos: Object.fromEntries(CITY_V1.stores.map((st) => [st.id, { x: st.x, y: st.y }])),
+    buildingPos: Object.fromEntries(CITY_V1.buildings.map((b) => [b.id, { x: b.x, y: b.y }])),
+  };
+  const timeline = buildSellingTimeline(roundEvents, ctx);
+  const walkers = timeline.items.filter((i) => i.kind === 'purchase');
+  const purchaseIds = new Set(purchases.map((e) => e.eventId));
+  assert.equal(new Set(walkers.map((w) => w.eventId)).size, walkers.length, 'walker eventIds unique');
+  for (const w of walkers) {
+    assert(purchaseIds.has(w.eventId), 'every walker maps to a real PurchaseEvent');
+    assert.equal(w.visualId, `walker-${w.eventId}`, 'visualId derives from eventId');
+  }
+});
+
 let passed = 0;
 for (const r of results) {
   console.log(`${r.ok ? 'PASS' : 'FAIL'}  ${r.name}${r.ok ? '' : '  — ' + r.err}`);

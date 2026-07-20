@@ -131,6 +131,9 @@ export function estimateDemand(state, store, co, prod) {
 // ---------- CONSUME phase: real consumer agents choose store+product ----------
 export function resolveConsumers(state) {
   const rng = rngFor(state);
+  // deterministic per-round sequence so every PurchaseEvent has a unique, stable id the
+  // replay layer can hang visuals on (same seed -> same ids, across save/resume too)
+  let purchaseSeq = 0;
   // hotels rotate a fresh batch of tourist agents every round (temporary economic entities)
   state.touristsThisRound = [];
   for (const b of CITY_V1.buildings.filter((b) => b.kind === 'hotel')) {
@@ -171,7 +174,7 @@ export function resolveConsumers(state) {
     best.co.familiarity[district] = Math.min(TUNING.familiarityCap, (best.co.familiarity[district] || 0) + TUNING.familiarityPerSale * qty);
     const h = best.store.history[best.prod.id] || (best.store.history[best.prod.id] = { unitsLastRound: 0, totalUnits: 0, stockouts: 0 });
     h._thisRound = (h._thisRound || 0) + qty;
-    state.eventLog.push({ t: 'PurchaseEvent', round: state.round, consumerId: consumer.id, from: consumer.homeBuildingId, storeId: best.store.id, companyId: best.co.id, productId: best.prod.id, qty, revenue });
+    state.eventLog.push({ t: 'PurchaseEvent', eventId: `pe-r${state.round}-${purchaseSeq++}`, round: state.round, consumerId: consumer.id, from: consumer.homeBuildingId, storeId: best.store.id, companyId: best.co.id, productId: best.prod.id, qty, revenue });
     state.debugLog.push({ t: 'ConsumerChoice', round: state.round, consumerId: consumer.id, profile: consumer.profileId,
       chosen: { storeId: best.store.id, productId: best.prod.id, dist: best.d, ...best.u },
       alternatives: options.slice(1, 4).map((o) => ({ storeId: o.store.id, productId: o.prod.id, dist: o.d, total: o.u.total })) });
