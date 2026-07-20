@@ -23,35 +23,83 @@ import * as PIX from './pixel-art.js';
 // ============================================================================================
 const COMPANY_COLORS = [0xe0533f, 0x3f8fe0, 0xe6b23f, 0x43b06a];
 const COMPANY_COLOR_CSS = ['#e0533f', '#3f8fe0', '#e6b23f', '#43b06a'];
-const ROLE_LABELS = { president: 'President', hr: 'HR', manager: 'Manager', marketing: 'Marketing', sales: 'Sales', logistics: 'Logistics', analyst: 'Analyst' };
-const DISTRICT_LABELS = Object.fromEntries(CITY_V1.districts.map((d) => [d.id, d.name]));
-const POSITION_LABELS = { economy: 'Economy', mainstream: 'Mainstream', premium: 'Premium' };
-const STORE_TYPE_LABELS = { convenience: 'Convenience Store', supermarket: 'Supermarket', mall: 'Mall Shop' };
+// ---- Thai display layer (presentation only) --------------------------------------------
+// Internal ids, save data, dev logs, and core reject-reason strings stay English; every
+// map below only changes what the player READS. City entities keep their English names in
+// CITY_V1 (authoritative sim data) and are looked up here by id for display.
+const ROLE_LABELS = { president: 'ประธานบริษัท', hr: 'ฝ่ายบุคคล', manager: 'ผู้จัดการ', marketing: 'การตลาด', sales: 'ฝ่ายขาย', logistics: 'โลจิสติกส์', analyst: 'นักวิเคราะห์' };
+const TH_DISTRICT = { west: 'ย่านบ้านตะวันตก', central: 'ย่านกลางเมือง', east: 'ย่านโรงแรมตะวันออก' };
+const DISTRICT_LABELS = Object.fromEntries(CITY_V1.districts.map((d) => [d.id, TH_DISTRICT[d.id] || d.name]));
+const POSITION_LABELS = { economy: 'ประหยัด', mainstream: 'ตลาดทั่วไป', premium: 'พรีเมียม' };
+const STORE_TYPE_LABELS = { convenience: 'ร้านสะดวกซื้อ', supermarket: 'ซูเปอร์มาร์เก็ต', mall: 'ร้านในห้าง' };
+const TH_STORE = {
+  'store-wc1': 'ร้านหัวมุมตะวันตก', 'store-wc2': 'มาร์ทเมืองเก่า', 'store-cc1': 'ร้านหน้าคอนโด',
+  'store-sup1': 'ซูเปอร์กลางเมือง', 'store-sup2': 'ซูเปอร์ฝั่งใต้', 'store-ec1': 'บีชมาร์ท', 'store-mall': 'แกรนด์อาร์เคด',
+};
+const TH_PLOT = { 'plot-central': 'ทำเลกลางเมือง', 'plot-commercial': 'ทำเลการค้าตะวันออก', 'plot-outer-west': 'ทำเลชานเมืองตะวันตก', 'plot-edge-south': 'ทำเลริมเมืองใต้' };
+const TH_ARCH = { balanced_operator: 'บอทสายสมดุล', price_leader: 'บอทสายราคาประหยัด', brand_builder: 'บอทสายสร้างแบรนด์', retail_expansion: 'บอทสายขยายหน้าร้าน' };
+const storeName = (id) => TH_STORE[id] || CITY_V1.stores.find((s) => s.id === id)?.name || id;
+const plotName = (id) => TH_PLOT[id] || CITY_V1.hqPlots.find((p) => p.id === id)?.name || id;
+const archLabel = (id) => TH_ARCH[id] || ARCHETYPES[id]?.label || id;
+// Core reject reasons are compact English diagnostics; translate for the player here and
+// fall back to the raw reason for anything unmapped (never hide the real cause).
+const TH_REASON = {
+  'HQ already chosen': 'เลือกทำเลสำนักงานใหญ่ไปแล้ว',
+  'insufficient cash for campaign': 'เงินสดไม่พอสำหรับแคมเปญ',
+  'insufficient cash for setup': 'เงินสดไม่พอสำหรับค่าตั้งสำนักงาน',
+  'insufficient cash to hire': 'เงินสดไม่พอสำหรับการจ้าง',
+  'insufficient cash to train': 'เงินสดไม่พอสำหรับการฝึกอบรม',
+  'invalid role': 'ตำแหน่งงานไม่ถูกต้อง',
+  'max 2 SKUs': 'มีสินค้าได้สูงสุด 2 รายการ',
+  'no campaign slots (hire marketing)': 'ไม่มีโควตาแคมเปญ (ต้องจ้างฝ่ายการตลาด)',
+  'no free skill slot': 'ช่องทักษะเต็มแล้ว',
+  'no pitch slots left': 'โควตาการเสนอขายหมดแล้วในรอบนี้',
+  'no recruit slots left this round': 'โควตาการจ้างหมดแล้วในรอบนี้',
+  'no shipment slots left': 'โควตาการจัดส่งหมดแล้วในรอบนี้',
+  'organization capacity full (need managers)': 'องค์กรเต็มอัตรา (ต้องจ้างผู้จัดการเพิ่ม)',
+  'plot taken': 'ทำเลนี้ถูกจองไปแล้ว',
+  'price must be a finite number': 'ราคาต้องเป็นตัวเลขที่ถูกต้อง',
+  'sales account capacity exceeded': 'เกินกำลังดูแลร้านค้าของฝ่ายขาย',
+  'skill at max level': 'ทักษะถึงระดับสูงสุดแล้ว',
+  'skill level gated (HR unlocks higher levels)': 'ระดับทักษะถูกจำกัด (ฝ่ายบุคคลช่วยปลดล็อกระดับสูงขึ้น)',
+  'skill not available for role': 'ทักษะนี้ไม่ตรงกับตำแหน่งงาน',
+  'unknown store': 'ไม่พบร้านค้า', 'unknown product': 'ไม่พบสินค้า', 'unknown district': 'ไม่พบย่าน',
+  'units must be a positive integer': 'จำนวนสินค้าต้องเป็นจำนวนเต็มบวก',
+};
+function thReason(reason) {
+  if (!reason) return '';
+  if (TH_REASON[reason]) return TH_REASON[reason];
+  let m = reason.match(/^price outside (\w+) band \[(\d+),(\d+)\]$/);
+  if (m) return `ราคาอยู่นอกช่วงของสินค้า${POSITION_LABELS[m[1]] || m[1]} ($${m[2]}–$${m[3]})`;
+  m = reason.match(/^store beyond logistics range \((\d+) > (\d+)\)$/);
+  if (m) return `ร้านอยู่ไกลเกินระยะจัดส่ง (${m[1]} > ${m[2]} ช่อง)`;
+  return reason;
+}
 const SAVE_KEY = 'company-economy-save-v1';
 
 const CAP_LABEL = {
-  'org.recruit_slots': (v) => `Recruit ${v} employee(s) per round`,
-  'org.subordinate_capacity': (v) => `Organization capacity: ${v} employees`,
-  'org.max_skill_level': (v) => `Train skills up to level ${v}`,
-  'hiring.cost_mult': (v) => `Hiring cost x${v.toFixed(2)}`,
-  'marketing.campaign_slots': (v) => `Launch ${v} campaign(s) per round`,
-  'marketing.awareness_gain_mult': (v) => `Campaign awareness gain x${v.toFixed(2)}`,
-  'sales.pitch_slots': (v) => `Pitch ${v} store(s) per round`,
-  'sales.account_capacity': (v) => `Sales account capacity: ${v}`,
-  'sales.relationship_gain': (v) => `+${v} relationship per assigned store/round`,
-  'logistics.shipment_slots': (v) => `Ship to ${v} store(s) per round`,
-  'logistics.range': (v) => `Delivery range: ${v} tiles from HQ`,
-  'logistics.cost_mult': (v) => `Shipping cost x${v.toFixed(2)}`,
-  'logistics.reliability': (v) => `${Math.round(v * 100)}% delivery reliability`,
-  'research.zone_visibility': (v) => (v ? `Exact zone demand data unlocked` : null),
-  'research.forecast_depth': (v) => (v ? `Deeper demand forecast unlocked` : null),
+  'org.recruit_slots': (v) => `จ้างพนักงานได้ ${v} คนต่อรอบ`,
+  'org.subordinate_capacity': (v) => `ความจุองค์กร: ${v} คน`,
+  'org.max_skill_level': (v) => `ฝึกทักษะได้ถึงระดับ ${v}`,
+  'hiring.cost_mult': (v) => `ค่าใช้จ่ายการจ้าง x${v.toFixed(2)}`,
+  'marketing.campaign_slots': (v) => `ปล่อยแคมเปญได้ ${v} ครั้งต่อรอบ`,
+  'marketing.awareness_gain_mult': (v) => `ผลแคมเปญต่อการรับรู้ x${v.toFixed(2)}`,
+  'sales.pitch_slots': (v) => `เสนอขายร้านค้าได้ ${v} ร้านต่อรอบ`,
+  'sales.account_capacity': (v) => `กำลังดูแลร้านค้าของฝ่ายขาย: ${v}`,
+  'sales.relationship_gain': (v) => `+${v} ความสัมพันธ์ต่อร้านที่ดูแล/รอบ`,
+  'logistics.shipment_slots': (v) => `จัดส่งได้ ${v} ร้านต่อรอบ`,
+  'logistics.range': (v) => `ระยะจัดส่ง: ${v} ช่องจากสำนักงานใหญ่`,
+  'logistics.cost_mult': (v) => `ค่าขนส่ง x${v.toFixed(2)}`,
+  'logistics.reliability': (v) => `ความน่าเชื่อถือการจัดส่ง ${Math.round(v * 100)}%`,
+  'research.zone_visibility': (v) => (v ? `ปลดล็อกข้อมูลอุปสงค์รายย่านแบบละเอียด` : null),
+  'research.forecast_depth': (v) => (v ? `ปลดล็อกการพยากรณ์อุปสงค์เชิงลึก` : null),
 };
 function capLine(key, v) { const f = CAP_LABEL[key]; if (!f) return null; return f(v); }
 
 function buildingBlurb(b) {
-  if (b.kind === 'house') return `${b.residents} residents — mostly budget-conscious households.`;
-  if (b.kind === 'condo') return `${b.residents} residents — a mix of budget, mainstream, and premium-minded professionals.`;
-  if (b.kind === 'hotel') return `${b.touristsPerRound} ${b.touristProfile === 'tourist_budget' ? 'budget-minded' : 'premium-minded'} tourists rotate through here every round.`;
+  if (b.kind === 'house') return `ผู้อยู่อาศัย ${b.residents} คน — ส่วนใหญ่เป็นครัวเรือนที่เน้นประหยัด`;
+  if (b.kind === 'condo') return `ผู้อยู่อาศัย ${b.residents} คน — คนทำงานหลากหลาย ทั้งสายประหยัด ตลาดทั่วไป และพรีเมียม`;
+  if (b.kind === 'hotel') return `นักท่องเที่ยว${b.touristProfile === 'tourist_budget' ? 'สายประหยัด' : 'สายพรีเมียม'}หมุนเวียน ${b.touristsPerRound} คนต่อรอบ`;
   return '';
 }
 
@@ -147,13 +195,13 @@ viewportEl.appendChild(renderer.domElement);
 scene.add(new THREE.AmbientLight(0xffffff, 0.85));
 const sun = new THREE.DirectionalLight(0xffe6c0, 0.7); sun.position.set(6, 12, 4); scene.add(sun);
 
-const ground = new THREE.Mesh(new THREE.PlaneGeometry(W + 6, H + 6), new THREE.MeshLambertMaterial({ color: 0x3a4436 }));
+const ground = new THREE.Mesh(new THREE.PlaneGeometry(W + 6, H + 6), new THREE.MeshLambertMaterial({ map: PIX.groundTexture(W + 6, H + 6) }));
 ground.rotation.x = -Math.PI / 2; ground.position.set(W / 2, -0.05, H / 2); scene.add(ground);
-for (const [w, h, x, z] of [[W + 2, 1.6, W / 2, 10.5], [1.6, H + 2, 11, H / 2]]) {
-  const road = new THREE.Mesh(new THREE.PlaneGeometry(w, h), new THREE.MeshLambertMaterial({ color: 0x50555e }));
+for (const [w, h, x, z, horiz] of [[W + 2, 1.6, W / 2, 10.5, true], [1.6, H + 2, 11, H / 2, false]]) {
+  const road = new THREE.Mesh(new THREE.PlaneGeometry(w, h), new THREE.MeshLambertMaterial({ map: PIX.roadTexture(Math.ceil(horiz ? w : h), horiz) }));
   road.rotation.x = -Math.PI / 2; road.position.set(x, 0.0, z); scene.add(road);
 }
-const DISTRICT_TINT = { west: 0x3a4a3a, central: 0x3a3a46, east: 0x463a46 };
+const DISTRICT_TINT = { west: 0x35522e, central: 0x30405c, east: 0x54345a };   // stronger per-district identity
 const DISTRICT_BOUNDS = { west: [0, 0, 9, H], central: [9, 0, 14, H], east: [14, 0, W, H] };
 const districtPlanes = {};
 for (const d of CITY_V1.districts) {
@@ -163,6 +211,46 @@ for (const d of CITY_V1.districts) {
   districtPlanes[d.id] = m;
 }
 const DISTRICT_ANCHOR = { west: { x: 2, y: 6 }, central: { x: 10, y: 3 }, east: { x: 15.4, y: 3.4 } };
+
+// ---- decorative greenery + grounding shadows (presentation only, not pickable) ----
+const SHADOW_TEX = PIX.shadowTexture();
+function addBlobShadow(x, y, size) {
+  const m = new THREE.Mesh(new THREE.PlaneGeometry(size, size * 0.72), new THREE.MeshBasicMaterial({ map: SHADOW_TEX, transparent: true, depthWrite: false }));
+  m.rotation.x = -Math.PI / 2; m.position.set(x, 0.012, y + 0.12); scene.add(m);
+  return m;
+}
+{
+  const TREE_TEX = [PIX.treeTexture(0), PIX.treeTexture(1)];
+  const BUSH_TEX = PIX.bushTexture();
+  const PARK_TEX = PIX.parkTexture();
+  const occupied = new Set();
+  for (const e of [...CITY_V1.buildings, ...CITY_V1.stores, ...CITY_V1.hqPlots]) {
+    for (let dx = -1; dx <= 1; dx++) for (let dy = -1; dy <= 1; dy++) occupied.add(`${e.x + dx},${e.y + dy}`);
+  }
+  const free = (x, y) => !occupied.has(`${Math.round(x)},${Math.round(y)}`) && Math.abs(y - 10.5) > 1.4 && Math.abs(x - 11) > 1.4;
+  // two small parks: lawn patch + surrounding trees give each city edge a landmark
+  for (const [lx, ly] of [[1.6, 2.2], [17.6, 13.6]]) {
+    const lawn = new THREE.Mesh(new THREE.PlaneGeometry(3, 3), new THREE.MeshLambertMaterial({ map: PARK_TEX, transparent: true }));
+    lawn.rotation.x = -Math.PI / 2; lawn.position.set(lx, 0.008, ly); scene.add(lawn);
+  }
+  const TREES = [
+    [1, 1.6], [2.4, 2.8], [1.2, 3.4], [8, 1.2], [1.4, 9], [2, 16], [7.6, 16.4], [8.2, 6.6],
+    [13.6, 1.4], [18.6, 1.8], [16.8, 13], [18.4, 14.2], [17.2, 16.2], [13.2, 8.6], [4.6, 5.4], [14.6, 12.2], [9.4, 15.6], [18.8, 10.6],
+  ];
+  TREES.forEach(([x, y], i) => {
+    if (!free(x, y)) return;
+    const s = PIX.makeSprite(TREE_TEX[i % 2], 0.95 + (i % 3) * 0.12);
+    s.position.set(x, s.scale.y / 2 + 0.02, y);
+    scene.add(s);
+    addBlobShadow(x, y, 0.7);
+  });
+  for (const [x, y] of [[3.2, 6.8], [7.2, 13.4], [12.8, 3.2], [15.6, 15.4], [9.2, 8.2], [18.2, 6.4]]) {
+    if (!free(x, y)) continue;
+    const s = PIX.makeSprite(BUSH_TEX, 0.42);
+    s.position.set(x, s.scale.y / 2 + 0.02, y);
+    scene.add(s);
+  }
+}
 
 // ---- static textures (created ONCE, reused for the app lifetime) ----
 const TEX = {
@@ -188,6 +276,7 @@ function addPickSprite(texture, worldH, x, y, pickType, simId) {
   s.position.set(x, worldH / 2 + 0.02, y);
   s.userData = { pickType, simId };
   scene.add(s); pickables.push(s);
+  if (pickType !== 'plot') addBlobShadow(x, y, Math.max(0.8, worldH * 0.75));   // grounding shadow
   return s;
 }
 for (const b of CITY_V1.buildings) {
@@ -393,11 +482,11 @@ function applyReplayItem(it, instant) {
       billboardSprites.push({ sprite: sp, until: replay.clock + 4.5 });
       const plane = districtPlanes[it.districtId];
       plane.material.opacity = 0.55;                      // flash; decays in tickReplay
-      spawnPop(`${game.companies[ci]?.name}: campaign +${it.gain} awareness`, a.x + 1.5, a.y, 'pop-campaign');
+      spawnPop(`${game.companies[ci]?.name}: แคมเปญ +${it.gain} การรับรู้`, a.x + 1.5, a.y, 'pop-campaign');
     }
   } else if (it.kind === 'shelfWon' || it.kind === 'shelfDropped') {
     const s = CITY_V1.stores.find((x) => x.id === it.storeId);
-    if (!instant) spawnPop(`${game.companies[ci]?.name} ${it.kind === 'shelfWon' ? 'won shelf!' : 'lost shelf'}`, s.x, s.y, it.kind === 'shelfWon' ? 'pop-good' : 'pop-bad');
+    if (!instant) spawnPop(`${game.companies[ci]?.name} ${it.kind === 'shelfWon' ? 'ได้พื้นที่ชั้นวาง!' : 'เสียพื้นที่ชั้นวาง'}`, s.x, s.y, it.kind === 'shelfWon' ? 'pop-good' : 'pop-bad');
   } else if (it.kind === 'delivery' || it.kind === 'deliveryFailed' || it.kind === 'deliveryWasted') {
     if (!instant && it.from && it.to) {
       const v = getVan();
@@ -485,11 +574,11 @@ function tickReplay(dt) {
 }
 function replayPhaseLabel() {
   const c = replay.clock;
-  if (c < 3) return 'Marketing hits the streets…';
-  if (c < 5) return 'Stores decide their shelves…';
-  if (c < 8) return 'Deliveries roll out…';
-  if (c < replay.timeline.duration - 1.5) return 'The city goes shopping…';
-  return 'Closing the books…';
+  if (c < 3) return 'การตลาดออกสู่ท้องถนน…';
+  if (c < 5) return 'ร้านค้าตัดสินใจจัดชั้นวาง…';
+  if (c < 8) return 'รถส่งของออกวิ่ง…';
+  if (c < replay.timeline.duration - 1.5) return 'ชาวเมืองออกมาจับจ่าย…';
+  return 'ปิดบัญชีประจำรอบ…';
 }
 function finishReplay() {
   if (replay.done) return;
@@ -499,7 +588,7 @@ function finishReplay() {
   for (const b of billboardSprites) scene.remove(b.sprite);
   billboardSprites.length = 0;
   const btn = document.getElementById('replayContinueBtn');
-  if (btn) { btn.disabled = false; btn.textContent = 'Continue to Round Summary'; }
+  if (btn) { btn.disabled = false; btn.textContent = 'ดูสรุปรอบ'; }
   if (humanCount() === 0 && ui.autoObserver) setTimeout(() => { if (ui.screen === 'selling') goToSummary(); }, 700);
 }
 function skipReplay() {
@@ -562,10 +651,10 @@ function renderSetup() {
     setupSlots.forEach((slot, i) => {
       const nameInput = el('input', { type: 'text', value: slot.name, style: 'flex:1', oninput: (e) => { slot.name = e.target.value; } });
       const typeSel = el('select', { style: 'width:110px', onchange: (e) => { slot.type = e.target.value; redrawSlots(); } },
-        [el('option', { value: 'human', selected: slot.type === 'human' }, 'Human'),
-         el('option', { value: 'bot', selected: slot.type === 'bot' }, 'Bot')]);
+        [el('option', { value: 'human', selected: slot.type === 'human' }, 'ผู้เล่น'),
+         el('option', { value: 'bot', selected: slot.type === 'bot' }, 'บอท')]);
       const archSel = el('select', { style: 'width:150px', onchange: (e) => { slot.archetype = e.target.value; } },
-        ARCHETYPE_IDS.map((a) => el('option', { value: a, selected: slot.archetype === a }, ARCHETYPES[a].label)));
+        ARCHETYPE_IDS.map((a) => el('option', { value: a, selected: slot.archetype === a }, archLabel(a))));
       archSel.style.visibility = slot.type === 'bot' ? 'visible' : 'hidden';
       const removeBtn = el('button', { class: 'danger', disabled: setupSlots.length <= 2, onclick: () => { setupSlots.splice(i, 1); redrawSlots(); } }, '✕');
       slotsBox.appendChild(el('div', { class: 'row' }, [
@@ -578,32 +667,32 @@ function renderSetup() {
         const defaults = ['Alpha Co.', 'Bravo Inc.', 'Cobalt Ltd.', 'Dorado LLC'];
         setupSlots.push({ type: 'bot', name: defaults[setupSlots.length] || `Company ${setupSlots.length + 1}`, archetype: ARCHETYPE_IDS[setupSlots.length % ARCHETYPE_IDS.length] });
         redrawSlots();
-      } }, '+ Add Company (up to 4)'));
+      } }, '+ เพิ่มบริษัท (สูงสุด 4)'));
     }
   }
   redrawSlots();
 
   const card = el('div', { class: 'card' }, [
     el('h2', {}, 'Company Economy'),
-    el('p', { class: 'small' }, 'A competitive business strategy game on one small city. 2–4 companies — humans and bots — fight for shelves, customers, and revenue. Choose your HQ, build your organization, read the market, and out-compete everyone.'),
-    el('p', { class: 'small', style: 'color:#7fe0a0' }, 'Recommended first test: keep the defaults below (you vs 1 bot) and press Start Match.'),
+    el('p', { class: 'small' }, 'เกมกลยุทธ์ธุรกิจแข่งขันบนเมืองเล็ก ๆ หนึ่งเมือง — 2–4 บริษัท ทั้งผู้เล่นและบอท ชิงพื้นที่ชั้นวาง ลูกค้า และรายได้ เลือกทำเลสำนักงานใหญ่ สร้างทีมงาน อ่านตลาด แล้วเอาชนะทุกคู่แข่ง'),
+    el('p', { class: 'small', style: 'color:#7fe0a0' }, 'แนะนำสำหรับครั้งแรก: ใช้ค่าเริ่มต้นด้านล่าง (คุณ ปะทะ บอท 1 ตัว) แล้วกด “เริ่มเกม” ได้เลย'),
     save ? el('div', { class: 'employee-row', style: 'border-color:#3f6fe0' }, [
       el('div', { class: 'row between' }, [
-        el('b', {}, `Saved match — round ${JSON.parse(save.state).round}, ${save.config.slots.length} companies`),
-        el('button', { class: 'primary', onclick: () => resumeMatch(save) }, 'Resume'),
+        el('b', {}, `เกมที่บันทึกไว้ — รอบที่ ${JSON.parse(save.state).round} (${save.config.slots.length} บริษัท)`),
+        el('button', { class: 'primary', onclick: () => resumeMatch(save) }, 'เล่นต่อ'),
       ]),
     ]) : null,
-    el('h3', {}, 'Companies (2–4; each slot Human or Bot)'),
+    el('h3', {}, 'บริษัท (2–4 ช่อง เลือกได้ทั้งผู้เล่นและบอท)'),
     slotsBox,
-    el('h3', {}, 'Match Seed (same seed + same decisions = same outcomes)'),
+    el('h3', {}, 'ซีดของเกม (ซีดเดิม + การตัดสินใจเดิม = ผลลัพธ์เดิม)'),
     seedInput,
     el('div', { class: 'row', style: 'margin-top:16px' }, [
       el('button', { class: 'primary', style: 'flex:1', onclick: () => {
         const seed = parseInt(seedInput.value, 10) || 1;
         startMatch({ seed, slots: setupSlots.map((s) => ({ ...s, name: s.name.trim() || 'Company' })) });
-      } }, 'Start Match'),
+      } }, 'เริ่มเกม'),
     ]),
-    humanCountOf(setupSlots) === 0 ? el('p', { class: 'small', style: 'color:#e0a35f' }, 'All-bot match: you will observe the competition round by round.') : null,
+    humanCountOf(setupSlots) === 0 ? el('p', { class: 'small', style: 'color:#e0a35f' }, 'โหมดบอทล้วน: คุณจะได้นั่งชมการแข่งขันแบบรอบต่อรอบ') : null,
   ]);
   $panels.appendChild(el('div', { class: 'overlay' }, card));
 }
@@ -699,10 +788,10 @@ function renderTransition() {
   const co = activeCo();
   const i = activeIdx();
   const card = el('div', { class: 'card' }, [
-    el('h2', { style: `color:${COMPANY_COLOR_CSS[i]}` }, `Pass the device to ${co.name}`),
-    el('p', { class: 'small' }, 'Other companies\' plans stay private until resolution. Make sure no one else is looking at the screen.'),
-    el('p', {}, `Round ${game.round} — ${co.hqPlotId ? 'Planning Phase' : 'Choose your HQ first'}`),
-    el('button', { class: 'primary', style: 'margin-top:10px', onclick: beginHumanTurn }, `I'm ${co.name} — Begin Turn`),
+    el('h2', { style: `color:${COMPANY_COLOR_CSS[i]}` }, `ส่งเครื่องให้ ${co.name}`),
+    el('p', { class: 'small' }, 'แผนของบริษัทอื่นจะถูกปิดเป็นความลับจนกว่าจะจบรอบ ตรวจดูว่าไม่มีใครอื่นมองหน้าจออยู่'),
+    el('p', {}, `รอบที่ ${game.round} — ${co.hqPlotId ? 'ช่วงวางแผน' : 'เริ่มจากเลือกทำเลสำนักงานใหญ่'}`),
+    el('button', { class: 'primary', style: 'margin-top:10px', onclick: beginHumanTurn }, `เริ่มวางแผน — ${co.name}`),
   ]);
   $panels.appendChild(el('div', { class: 'overlay' }, card));
 }
@@ -725,8 +814,8 @@ function renderHq() {
     const nearbyPop = CITY_V1.buildings.filter((b) => b.kind !== 'hotel' && Math.abs(b.x - p.x) + Math.abs(b.y - p.y) <= 8).reduce((s, b) => s + b.residents, 0);
     const selected = ui.selection?.kind === 'plot' && ui.selection.id === p.id;
     list.appendChild(el('div', { class: 'card', style: `position:static; border-color:${selected ? '#ffe066' : '#2c3038'}; ${taken ? 'opacity:.4' : ''}`, onclick: () => { if (!taken) { ui.selection = { kind: 'plot', id: p.id }; renderScreen(); } } }, [
-      el('div', { class: 'row between' }, [el('b', {}, p.name), taken ? el('span', { class: 'pill bad' }, `Taken — ${takenBy.name}`) : el('span', { class: 'pill' }, `$${p.setupCost} setup`)]),
-      el('p', { class: 'small' }, `Rent $${p.rentPerRound}/round — ${nearbyStores} store(s) in easy range, ~${nearbyPop} nearby residents.`),
+      el('div', { class: 'row between' }, [el('b', {}, plotName(p.id)), taken ? el('span', { class: 'pill bad' }, `ถูกจองแล้ว — ${takenBy.name}`) : el('span', { class: 'pill' }, `ค่าตั้งสำนักงาน $${p.setupCost}`)]),
+      el('p', { class: 'small' }, `ค่าเช่า $${p.rentPerRound}/รอบ — มี ${nearbyStores} ร้านในระยะใกล้ ผู้อยู่อาศัยราว ${nearbyPop} คน`),
     ]));
   }
   const confirm = el('button', { class: 'primary', disabled: !ui.selection || ui.selection.kind !== 'plot', onclick: () => {
@@ -734,14 +823,14 @@ function renderHq() {
     if (r.ok) {
       telemetry.actionsPerCompany[activeIdx()]++;
       syncHqSprites();
-      toast(`${co.name} set up at ${CITY_V1.hqPlots.find((x) => x.id === ui.selection.id).name}`);
+      toast(`${co.name} ตั้งสำนักงานใหญ่ที่${plotName(ui.selection.id)}`);
       ui.selection = null; ui.screen = 'planning'; ui.tab = 'overview';
       renderScreen();
-    } else toast('Cannot place HQ: ' + r.reason, false);
-  } }, 'Confirm HQ Location');
+    } else toast('ตั้งสำนักงานใหญ่ไม่ได้: ' + thReason(r.reason), false);
+  } }, 'ยืนยันทำเลสำนักงานใหญ่');
   $panels.appendChild(el('div', { class: 'card', style: 'left:12px; top:58px; bottom:12px; width:340px; overflow-y:auto;' }, [
-    el('h2', {}, `${co.name} — Choose HQ Location`),
-    el('p', { class: 'small' }, 'Click a plot sign on the map or a card below. Location shapes sales reach, delivery cost/range, and rent — not a guaranteed win.'),
+    el('h2', {}, `${co.name} — เลือกทำเลสำนักงานใหญ่`),
+    el('p', { class: 'small' }, 'แตะป้ายทำเลบนแผนที่หรือการ์ดด้านล่าง ทำเลกำหนดระยะการขาย ค่าขนส่ง และค่าเช่า — ไม่มีทำเลไหนการันตีชัยชนะ'),
     list, confirm,
   ]));
 }
@@ -750,8 +839,8 @@ function renderHq() {
 // Screen: PLANNING (tabs + submit review)
 // ============================================================================================
 const TABS = [
-  ['overview', 'Overview'], ['hire', 'Hire'], ['skills', 'Skills'], ['product', 'Product'],
-  ['marketing', 'Marketing'], ['sales', 'Sales'], ['logistics', 'Logistics'],
+  ['overview', 'ภาพรวม'], ['hire', 'จ้างงาน'], ['skills', 'ทักษะ'], ['product', 'สินค้า'],
+  ['marketing', 'การตลาด'], ['sales', 'ฝ่ายขาย'], ['logistics', 'โลจิสติกส์'],
 ];
 function renderPlanning() {
   for (const id in plotSprites) plotSprites[id].visible = false;
@@ -766,7 +855,7 @@ function renderPlanning() {
   const humansLeft = ui.turnQueue.slice(ui.turnPos + 1).filter((i) => matchConfig.slots[i].type === 'human').length;
   dock.appendChild(el('div', { class: 'row', style: 'margin-top:10px' }, [
     el('button', { class: 'primary', style: 'width:100%', onclick: () => openSubmitReview(co, humansLeft) },
-      humansLeft > 0 ? 'Review & Pass to Next Company' : 'Review & Resolve Round'),
+      humansLeft > 0 ? 'ตรวจสอบแผนและส่งต่อบริษัทถัดไป' : 'ตรวจสอบแผนและจบรอบ'),
   ]));
   $panels.appendChild(dock);
   renderInspector();
@@ -776,22 +865,22 @@ function openSubmitReview(co, humansLeft) {
   const spent = (fin.marketing || 0) + (fin.other || 0);
   const plans = co._plans || { campaigns: [], pitches: [], shipments: [], accounts: [] };
   const rows = [
-    `Campaigns queued: ${plans.campaigns.length}`,
-    `Store pitches queued: ${plans.pitches.length}`,
-    `Shipments queued: ${plans.shipments.length}`,
-    `Sales coverage assigned: ${plans.accounts.length} store(s)`,
-    `Spent so far this round (hires/training/campaigns/setup): $${Math.round(spent)}`,
-    `Cash remaining: $${Math.round(co.cash)}`,
+    `แคมเปญที่จะปล่อย: ${plans.campaigns.length}`,
+    `ร้านที่จะเข้าเสนอขาย: ${plans.pitches.length}`,
+    `การจัดส่งที่วางไว้: ${plans.shipments.length}`,
+    `ร้านที่ฝ่ายขายดูแล: ${plans.accounts.length} ร้าน`,
+    `ใช้จ่ายไปแล้วรอบนี้ (จ้าง/ฝึก/แคมเปญ/ตั้งสำนักงาน): $${Math.round(spent)}`,
+    `เงินสดคงเหลือ: $${Math.round(co.cash)}`,
   ];
   const overlay = el('div', { class: 'overlay' }, el('div', { class: 'card' }, [
-    el('h2', {}, `${co.name} — Confirm your round plan`),
+    el('h2', {}, `${co.name} — ยืนยันแผนประจำรอบ`),
     ...rows.map((r) => el('p', { class: 'small' }, r)),
     plans.shipments.length === 0 && game.stores.some((s) => s.shelf.some((sl) => sl.companyId === co.id))
-      ? el('p', { class: 'small', style: 'color:#e0a35f' }, 'Heads up: no shipments queued — shelves without stock sell nothing.') : null,
+      ? el('p', { class: 'small', style: 'color:#e0a35f' }, 'โปรดทราบ: ยังไม่ได้วางแผนจัดส่งเลย — ชั้นวางที่ไม่มีสต็อกจะขายอะไรไม่ได้') : null,
     el('div', { class: 'row', style: 'margin-top:12px' }, [
-      el('button', { onclick: () => { overlay.remove(); } }, 'Back to Planning'),
+      el('button', { onclick: () => { overlay.remove(); } }, 'กลับไปวางแผน'),
       el('button', { class: 'primary', style: 'flex:1', onclick: () => { overlay.remove(); endActiveTurn(); } },
-        humansLeft > 0 ? 'Submit & Pass Device' : 'Submit & Resolve'),
+        humansLeft > 0 ? 'ยืนยันแผนและส่งเครื่องต่อ' : 'ยืนยันแผนและจบรอบ'),
     ]),
   ]));
   document.body.appendChild(overlay);
@@ -815,29 +904,29 @@ const TAB_RENDERERS = {
     const caps = computeCapabilities(co);
     return el('div', { class: 'card', style: 'position:static' }, [
       el('h2', {}, co.name),
-      el('p', {}, [el('b', {}, `$${Math.round(co.cash)}`), ' cash']),
-      el('p', { class: 'small' }, `Cumulative revenue: $${Math.round(co.cumulativeRevenue)} / target $${(game.rules || TUNING).revenueTarget} · Units sold: ${co.unitsSoldTotal}`),
-      el('p', { class: 'small' }, `HQ: ${co.hqPlotId ? CITY_V1.hqPlots.find((p) => p.id === co.hqPlotId).name : 'not set'}`),
-      el('h3', {}, 'What your organization can do this round'),
+      el('p', {}, [el('b', {}, `$${Math.round(co.cash)}`), ' เงินสด']),
+      el('p', { class: 'small' }, `รายได้สะสม: $${Math.round(co.cumulativeRevenue)} / เป้าหมาย $${(game.rules || TUNING).revenueTarget} · ขายแล้ว ${co.unitsSoldTotal} ชิ้น`),
+      el('p', { class: 'small' }, `สำนักงานใหญ่: ${co.hqPlotId ? plotName(co.hqPlotId) : 'ยังไม่ได้เลือก'}`),
+      el('h3', {}, 'รอบนี้องค์กรของคุณทำอะไรได้บ้าง'),
       ...['org.recruit_slots', 'sales.pitch_slots', 'sales.account_capacity', 'marketing.campaign_slots', 'logistics.shipment_slots', 'logistics.range', 'logistics.reliability']
         .map((k) => el('p', { class: 'cap-line' }, capLine(k, caps[k]))),
-      el('h3', {}, 'Employees'),
+      el('h3', {}, 'พนักงาน'),
       ...co.employees.map((e) => el('div', { class: 'employee-row' }, [
-        el('div', { class: 'row between' }, [el('b', {}, ROLE_LABELS[e.roleId]), el('span', { class: 'small' }, e.roleId === 'president' ? 'no salary' : `$${ROLES[e.roleId].salary}/round`)]),
-        Object.keys(e.skills).length ? el('p', { class: 'tiny' }, 'Skills: ' + Object.entries(e.skills).map(([s, l]) => `${s} Lv${l}`).join(', ')) : null,
+        el('div', { class: 'row between' }, [el('b', {}, ROLE_LABELS[e.roleId]), el('span', { class: 'small' }, e.roleId === 'president' ? 'ไม่มีเงินเดือน' : `$${ROLES[e.roleId].salary}/รอบ`)]),
+        Object.keys(e.skills).length ? el('p', { class: 'tiny' }, 'ทักษะ: ' + Object.entries(e.skills).map(([s, l]) => `${s} Lv${l}`).join(', ')) : null,
       ])),
-      el('h3', {}, 'Competitors (public info only)'),
+      el('h3', {}, 'คู่แข่ง (ข้อมูลสาธารณะเท่านั้น)'),
       ...game.companies.filter((c) => c.id !== co.id).map((c) => {
         const i = game.companies.indexOf(c);
         return el('p', { class: 'small' }, [
           el('span', { class: 'swatch', style: `background:${COMPANY_COLOR_CSS[i]}` }),
-          `${c.name}${matchConfig.slots[i].type === 'bot' ? ` (Bot — ${ARCHETYPES[matchConfig.slots[i].archetype].label})` : ''}: $${Math.round(c.cash)} cash, $${Math.round(c.cumulativeRevenue)} revenue, ${c.employees.length} employee(s), HQ ${c.hqPlotId ? 'set' : 'not set'}.`,
+          `${c.name}${matchConfig.slots[i].type === 'bot' ? ` (${archLabel(matchConfig.slots[i].archetype)})` : ''}: เงินสด $${Math.round(c.cash)}, รายได้ $${Math.round(c.cumulativeRevenue)}, พนักงาน ${c.employees.length} คน, สำนักงานใหญ่${c.hqPlotId ? 'ตั้งแล้ว' : 'ยังไม่ตั้ง'}`,
         ]);
       }),
     ]);
   },
   hire(co) {
-    const wrap = el('div', { class: 'card', style: 'position:static' }, [el('h2', {}, 'Hire'), el('p', { class: 'small' }, `Recruit slots remaining this round: ${co._budget.recruits}`)]);
+    const wrap = el('div', { class: 'card', style: 'position:static' }, [el('h2', {}, 'จ้างงาน'), el('p', { class: 'small' }, `โควตาการจ้างที่เหลือรอบนี้: ${co._budget.recruits}`)]);
     for (const roleId of Object.keys(ROLES)) {
       if (roleId === 'president') continue;
       const role = ROLES[roleId];
@@ -845,24 +934,24 @@ const TAB_RENDERERS = {
       const cost = Math.round(role.hiringCost * caps['hiring.cost_mult']);
       const diffs = capabilitiesPreview(co, roleId);
       wrap.appendChild(el('div', { class: 'employee-row' }, [
-        el('div', { class: 'row between' }, [el('b', {}, ROLE_LABELS[roleId]), el('span', {}, `$${cost} + $${role.salary}/round`)]),
+        el('div', { class: 'row between' }, [el('b', {}, ROLE_LABELS[roleId]), el('span', {}, `$${cost} + เงินเดือน $${role.salary}/รอบ`)]),
         ...diffs.map((d) => el('p', { class: 'cap-line' }, '+ ' + d)),
         el('button', { onclick: () => {
           const r = applyAction(game, { companyId: co.id, type: 'HireEmployee', roleId });
-          if (r.ok) { telemetry.actionsPerCompany[activeIdx()]++; toast(`Hired ${ROLE_LABELS[roleId]} for $${r.cost}`); } else toast('Cannot hire: ' + r.reason, false);
+          if (r.ok) { telemetry.actionsPerCompany[activeIdx()]++; toast(`จ้าง${ROLE_LABELS[roleId]}แล้ว ใช้เงิน $${r.cost}`); } else toast('จ้างไม่ได้: ' + thReason(r.reason), false);
           renderScreen();
-        } }, 'Hire'),
+        } }, 'จ้าง'),
       ]));
     }
     return wrap;
   },
   skills(co) {
-    const wrap = el('div', { class: 'card', style: 'position:static' }, [el('h2', {}, 'Skills')]);
+    const wrap = el('div', { class: 'card', style: 'position:static' }, [el('h2', {}, 'ทักษะ')]);
     const trainable = co.employees.filter((e) => e.roleId !== 'president');
-    if (!trainable.length) wrap.appendChild(el('p', { class: 'small' }, 'Hire a role-specific employee first.'));
+    if (!trainable.length) wrap.appendChild(el('p', { class: 'small' }, 'ต้องจ้างพนักงานประจำฝ่ายก่อนจึงจะฝึกทักษะได้'));
     for (const emp of trainable) {
       const roleSkills = Object.entries(SKILLS).filter(([, s]) => s.role === emp.roleId);
-      const block = el('div', { class: 'employee-row' }, [el('b', {}, `${ROLE_LABELS[emp.roleId]} — ${Object.keys(emp.skills).length}/${ROLES[emp.roleId].skillSlots} slots used`)]);
+      const block = el('div', { class: 'employee-row' }, [el('b', {}, `${ROLE_LABELS[emp.roleId]} — ใช้ช่องทักษะ ${Object.keys(emp.skills).length}/${ROLES[emp.roleId].skillSlots}`)]);
       for (const [skillId, skill] of roleSkills) {
         const level = emp.skills[skillId] || 0;
         const maxed = level >= skill.maxLevel;
@@ -872,9 +961,9 @@ const TAB_RENDERERS = {
           el('span', { class: 'small' }, `${skillId} (Lv ${level}/${skill.maxLevel})`),
           maxed ? el('span', { class: 'pill' }, 'MAX') : el('button', { onclick: () => {
             const r = applyAction(game, { companyId: co.id, type: 'UpgradeSkill', employeeId: emp.id, skillId });
-            if (r.ok) { telemetry.actionsPerCompany[activeIdx()]++; toast(`Trained ${skillId} to Lv${level + 1}`); } else toast('Cannot train: ' + r.reason, false);
+            if (r.ok) { telemetry.actionsPerCompany[activeIdx()]++; toast(`ฝึก ${skillId} ถึง Lv${level + 1} แล้ว`); } else toast('ฝึกไม่ได้: ' + thReason(r.reason), false);
             renderScreen();
-          } }, `Train $${cost}`),
+          } }, `ฝึก $${cost}`),
         ]));
         for (const d of diffs) block.appendChild(el('p', { class: 'cap-line' }, '+ ' + d));
       }
@@ -883,60 +972,60 @@ const TAB_RENDERERS = {
     return wrap;
   },
   product(co) {
-    const wrap = el('div', { class: 'card', style: 'position:static' }, [el('h2', {}, 'Product & Pricing'), el('p', { class: 'small' }, '1 category (beverage). Positioning changes cost, quality, and who wants it.')]);
+    const wrap = el('div', { class: 'card', style: 'position:static' }, [el('h2', {}, 'สินค้าและราคา'), el('p', { class: 'small' }, 'สินค้า 1 หมวด (เครื่องดื่ม) — ตำแหน่งสินค้ากำหนดต้นทุน คุณภาพ และกลุ่มลูกค้า')]);
     const prod = co.products[0];
     for (const posId of Object.keys(POSITIONS)) {
       const pos = POSITIONS[posId];
       const active = prod?.position === posId;
       wrap.appendChild(el('div', { class: 'employee-row', style: active ? 'border-color:#4f7ff0' : '' }, [
-        el('div', { class: 'row between' }, [el('b', {}, POSITION_LABELS[posId]), active ? el('span', { class: 'pill ok' }, 'Active') : null]),
-        el('p', { class: 'tiny' }, `Unit cost $${pos.unitCost} · price band $${pos.priceRange[0]}–$${pos.priceRange[1]} · quality ${pos.quality}/100`),
+        el('div', { class: 'row between' }, [el('b', {}, POSITION_LABELS[posId]), active ? el('span', { class: 'pill ok' }, 'ใช้อยู่') : null]),
+        el('p', { class: 'tiny' }, `ต้นทุนต่อชิ้น $${pos.unitCost} · ช่วงราคา $${pos.priceRange[0]}–$${pos.priceRange[1]} · คุณภาพ ${pos.quality}/100`),
         el('button', { disabled: active, onclick: () => {
           const r = applyAction(game, { companyId: co.id, type: 'SetProductPosition', productId: prod?.id, position: posId });
-          if (r.ok) toast(`Positioned as ${POSITION_LABELS[posId]}`); else toast('Cannot reposition: ' + r.reason, false);
+          if (r.ok) toast(`เปลี่ยนตำแหน่งสินค้าเป็น${POSITION_LABELS[posId]}แล้ว`); else toast('เปลี่ยนไม่ได้: ' + thReason(r.reason), false);
           renderScreen();
-        } }, active ? 'Current' : 'Set Position'),
+        } }, active ? 'ตำแหน่งปัจจุบัน' : 'เลือกตำแหน่งนี้'),
       ]));
     }
     if (prod) {
       const [lo, hi] = POSITIONS[prod.position].priceRange;
       const priceInput = el('input', { type: 'number', min: lo, max: hi, value: prod.price });
       wrap.appendChild(el('div', { class: 'employee-row' }, [
-        el('p', {}, `Current price: $${prod.price} (band $${lo}–$${hi})`),
-        el('p', { class: 'tiny' }, `Estimated margin per unit: $${(prod.price * (1 - TUNING.storeMarginShare) - POSITIONS[prod.position].unitCost).toFixed(1)}`),
+        el('p', {}, `ราคาปัจจุบัน: $${prod.price} (ช่วง $${lo}–$${hi})`),
+        el('p', { class: 'tiny' }, `กำไรโดยประมาณต่อชิ้น: $${(prod.price * (1 - TUNING.storeMarginShare) - POSITIONS[prod.position].unitCost).toFixed(1)}`),
         el('div', { class: 'row' }, [priceInput, el('button', { onclick: () => {
           const r = applyAction(game, { companyId: co.id, type: 'SetPrice', productId: prod.id, price: Number(priceInput.value) });
-          if (r.ok) toast(`Price set to $${priceInput.value}`); else toast('Cannot set price: ' + r.reason, false);
+          if (r.ok) toast(`ตั้งราคาเป็น $${priceInput.value} แล้ว`); else toast('ตั้งราคาไม่ได้: ' + thReason(r.reason), false);
           renderScreen();
-        } }, 'Set Price')]),
+        } }, 'ตั้งราคา')]),
       ]));
     }
     return wrap;
   },
   marketing(co) {
-    const wrap = el('div', { class: 'card', style: 'position:static' }, [el('h2', {}, 'Marketing'), el('p', { class: 'small' }, `Campaign slots remaining: ${co._budget?.campaigns ?? 0} · Cost $${TUNING.campaignCost} each`)]);
+    const wrap = el('div', { class: 'card', style: 'position:static' }, [el('h2', {}, 'การตลาด'), el('p', { class: 'small' }, `โควตาแคมเปญที่เหลือ: ${co._budget?.campaigns ?? 0} · ค่าใช้จ่ายครั้งละ $${TUNING.campaignCost}`)]);
     const unlockedCap = computeCapabilities(co)['marketing.campaign_slots'];
-    if (unlockedCap === 0) wrap.appendChild(el('p', { class: 'small' }, 'Hire a Marketing employee to unlock campaigns.'));
-    else if ((co._budget?.campaigns ?? 0) === 0) wrap.appendChild(el('p', { class: 'small', style: 'color:#e0a35f' }, 'A role hired this round activates its capacity next round — no campaign slots yet.'));
+    if (unlockedCap === 0) wrap.appendChild(el('p', { class: 'small' }, 'จ้างพนักงานฝ่ายการตลาดเพื่อปลดล็อกแคมเปญ'));
+    else if ((co._budget?.campaigns ?? 0) === 0) wrap.appendChild(el('p', { class: 'small', style: 'color:#e0a35f' }, 'พนักงานที่จ้างรอบนี้จะเริ่มทำงานรอบหน้า — รอบนี้จึงยังไม่มีโควตาแคมเปญ'));
     for (const d of CITY_V1.districts) {
       const aw = Math.round(co.awareness[d.id] || 0);
       const fatigue = co.campaignFatigue[d.id] || 0;
       const queued = (co._plans?.campaigns || []).filter((c) => c.districtId === d.id).length;
       wrap.appendChild(el('div', { class: 'employee-row' }, [
-        el('div', { class: 'row between' }, [el('b', {}, d.name), el('span', { class: 'small' }, `Awareness ${aw}/100`)]),
-        fatigue > 0 ? el('p', { class: 'tiny', style: 'color:#e0a35f' }, `Diminishing returns: ${fatigue} consecutive campaign(s) here already.`) : null,
-        queued ? el('p', { class: 'tiny' }, `${queued} campaign(s) queued this round`) : null,
+        el('div', { class: 'row between' }, [el('b', {}, DISTRICT_LABELS[d.id]), el('span', { class: 'small' }, `การรับรู้ ${aw}/100`)]),
+        fatigue > 0 ? el('p', { class: 'tiny', style: 'color:#e0a35f' }, `ผลตอบแทนลดลง: ปล่อยแคมเปญที่นี่ติดต่อกันแล้ว ${fatigue} ครั้ง`) : null,
+        queued ? el('p', { class: 'tiny' }, `วางแผนปล่อยแคมเปญรอบนี้ ${queued} ครั้ง`) : null,
         el('button', { disabled: (co._budget?.campaigns ?? 0) <= 0, onclick: () => {
           const r = applyAction(game, { companyId: co.id, type: 'LaunchMarketing', districtId: d.id });
-          if (r.ok) { telemetry.actionsPerCompany[activeIdx()]++; toast(`Campaign launched in ${d.name}`); } else toast('Cannot launch: ' + r.reason, false);
+          if (r.ok) { telemetry.actionsPerCompany[activeIdx()]++; toast(`ปล่อยแคมเปญใน${DISTRICT_LABELS[d.id]}แล้ว`); } else toast('ปล่อยแคมเปญไม่ได้: ' + thReason(r.reason), false);
           renderScreen();
-        } }, 'Launch Campaign — awareness, not guaranteed sales'),
+        } }, 'ปล่อยแคมเปญ — เพิ่มการรับรู้ ไม่ได้การันตียอดขาย'),
       ]));
     }
     return wrap;
   },
   sales(co) {
-    const wrap = el('div', { class: 'card', style: 'position:static' }, [el('h2', {}, 'Sales'), el('p', { class: 'small' }, `Pitch slots left: ${co._budget?.pitches ?? 0} · Account load used: ${(co._plans?.accounts || []).reduce((s, a) => s + a.load, 0)}/${co._budget?.accountCapacity ?? 0}`)]);
+    const wrap = el('div', { class: 'card', style: 'position:static' }, [el('h2', {}, 'ฝ่ายขาย'), el('p', { class: 'small' }, `โควตาเสนอขายที่เหลือ: ${co._budget?.pitches ?? 0} · กำลังดูแลที่ใช้ไป: ${(co._plans?.accounts || []).reduce((s, a) => s + a.load, 0)}/${co._budget?.accountCapacity ?? 0}`)]);
     const prod = co.products[0];
     for (const s of CITY_V1.stores) {
       const store = byId(game.stores, s.id);
@@ -947,28 +1036,28 @@ const TAB_RENDERERS = {
       const assignedNow = (co._plans?.accounts || []).some((a) => a.storeId === s.id);
       const pitchedNow = (co._plans?.pitches || []).some((p) => p.storeId === s.id);
       wrap.appendChild(el('div', { class: 'employee-row' }, [
-        el('div', { class: 'row between' }, [el('b', {}, s.name), el('span', { class: 'small' }, d != null ? `${d} tiles away` : '—')]),
-        el('p', { class: 'tiny' }, `${STORE_TYPE_LABELS[s.type]} · relationship ${rel}/100 · ${onShelf ? 'you are on the shelf' : 'not on shelf'}${d != null && d > TUNING.salesFarDistance ? ' · far account (load ' + load + ')' : ''}`),
+        el('div', { class: 'row between' }, [el('b', {}, storeName(s.id)), el('span', { class: 'small' }, d != null ? `ห่าง ${d} ช่อง` : '—')]),
+        el('p', { class: 'tiny' }, `${STORE_TYPE_LABELS[s.type]} · ความสัมพันธ์ ${rel}/100 · ${onShelf ? 'สินค้าของคุณอยู่บนชั้นวาง' : 'ยังไม่ได้ขึ้นชั้นวาง'}${d != null && d > TUNING.salesFarDistance ? ' · ร้านไกล (ใช้กำลังดูแล ' + load + ')' : ''}`),
         el('div', { class: 'row' }, [
           el('button', { disabled: assignedNow, onclick: () => {
             const r = applyAction(game, { companyId: co.id, type: 'AssignSales', storeId: s.id });
-            if (r.ok) { telemetry.actionsPerCompany[activeIdx()]++; toast(`Sales coverage assigned to ${s.name}`); } else toast('Cannot assign: ' + r.reason, false);
+            if (r.ok) { telemetry.actionsPerCompany[activeIdx()]++; toast(`มอบหมายฝ่ายขายดูแล${storeName(s.id)}แล้ว`); } else toast('มอบหมายไม่ได้: ' + thReason(r.reason), false);
             renderScreen();
-          } }, assignedNow ? 'Coverage queued' : 'Assign Coverage'),
+          } }, assignedNow ? 'ดูแลอยู่' : 'มอบหมายให้ดูแล'),
           el('button', { disabled: !prod || onShelf || pitchedNow, onclick: () => {
             const r = applyAction(game, { companyId: co.id, type: 'PitchStore', storeId: s.id, productId: prod.id });
-            if (r.ok) { telemetry.actionsPerCompany[activeIdx()]++; toast(`Pitch queued for ${s.name} — acceptance is not guaranteed`); } else toast('Cannot pitch: ' + r.reason, false);
+            if (r.ok) { telemetry.actionsPerCompany[activeIdx()]++; toast(`วางแผนเสนอขาย${storeName(s.id)}แล้ว — ร้านอาจตอบรับหรือไม่ก็ได้`); } else toast('เสนอขายไม่ได้: ' + thReason(r.reason), false);
             renderScreen();
-          } }, pitchedNow ? 'Pitch queued' : !prod ? 'Need a product first' : 'Pitch This Store'),
+          } }, pitchedNow ? 'รอเสนอขาย' : !prod ? 'ต้องมีสินค้าก่อน' : 'เสนอขายร้านนี้'),
         ]),
       ]));
     }
     return wrap;
   },
   logistics(co) {
-    const wrap = el('div', { class: 'card', style: 'position:static' }, [el('h2', {}, 'Logistics'), el('p', { class: 'small' }, `Shipment slots left: ${co._budget?.shipments ?? 0} · Range ${co._caps?.['logistics.range'] ?? 0} tiles`)]);
+    const wrap = el('div', { class: 'card', style: 'position:static' }, [el('h2', {}, 'โลจิสติกส์'), el('p', { class: 'small' }, `โควตาจัดส่งที่เหลือ: ${co._budget?.shipments ?? 0} · ระยะจัดส่ง ${co._caps?.['logistics.range'] ?? 0} ช่อง`)]);
     const prod = co.products[0];
-    if (!co.hqPlotId) { wrap.appendChild(el('p', { class: 'small' }, 'Choose your HQ before assigning shipments.')); return wrap; }
+    if (!co.hqPlotId) { wrap.appendChild(el('p', { class: 'small' }, 'ต้องเลือกทำเลสำนักงานใหญ่ก่อนจึงจะจัดส่งได้')); return wrap; }
     for (const s of CITY_V1.stores) {
       const store = byId(game.stores, s.id);
       const d = Math.abs(co.x - s.x) + Math.abs(co.y - s.y);
@@ -979,14 +1068,14 @@ const TAB_RENDERERS = {
       const estCost = Math.round(TUNING.shipmentBaseCost + d * TUNING.shipmentPerTile * (co._caps?.['logistics.cost_mult'] ?? 1));
       if (!slot && !pitchedOnly) continue;
       wrap.appendChild(el('div', { class: 'employee-row' }, [
-        el('div', { class: 'row between' }, [el('b', {}, s.name), el('span', { class: 'small' }, `${d} tiles · $${estCost} est.`)]),
-        slot ? el('p', { class: 'tiny' }, `Current stock: ${slot.stock} units`) : el('p', { class: 'tiny', style: 'color:#e0a35f' }, 'Pending pitch — shipment is wasted if the pitch fails this round.'),
-        !inRange ? el('p', { class: 'tiny', style: 'color:#e08f7f' }, 'Out of delivery range.') : null,
+        el('div', { class: 'row between' }, [el('b', {}, storeName(s.id)), el('span', { class: 'small' }, `${d} ช่อง · ประมาณ $${estCost}`)]),
+        slot ? el('p', { class: 'tiny' }, `สต็อกปัจจุบัน: ${slot.stock} ชิ้น`) : el('p', { class: 'tiny', style: 'color:#e0a35f' }, 'รอผลการเสนอขาย — ถ้าร้านไม่รับ สินค้าที่ส่งไปรอบนี้จะเสียเปล่า'),
+        !inRange ? el('p', { class: 'tiny', style: 'color:#e08f7f' }, 'อยู่นอกระยะจัดส่ง') : null,
         el('button', { disabled: !inRange || !prod || (co._budget?.shipments ?? 0) <= 0, onclick: () => {
           const r = applyAction(game, { companyId: co.id, type: 'AssignLogistics', storeId: s.id, productId: prod.id, units: 24 });
-          if (r.ok) { telemetry.actionsPerCompany[activeIdx()]++; toast(`Shipment queued to ${s.name}`); } else toast('Cannot ship: ' + r.reason, false);
+          if (r.ok) { telemetry.actionsPerCompany[activeIdx()]++; toast(`วางแผนจัดส่งไป${storeName(s.id)}แล้ว`); } else toast('จัดส่งไม่ได้: ' + thReason(r.reason), false);
           renderScreen();
-        } }, queued ? `Queued (${queued}) — Ship More` : 'Assign Shipment'),
+        } }, queued ? `จัดส่งแล้ว (${queued}) — ส่งเพิ่ม` : 'จัดส่งสินค้า'),
       ]));
     }
     return wrap;
@@ -1003,28 +1092,28 @@ function renderInspector() {
   if (ui.selection.kind === 'store') {
     const s = CITY_V1.stores.find((x) => x.id === ui.selection.id);
     const store = byId(game.stores, s.id);
-    box.appendChild(el('h2', {}, s.name));
-    box.appendChild(el('p', { class: 'small' }, `${STORE_TYPE_LABELS[s.type]} · ${DISTRICT_LABELS[s.district]} · shelf ${store.shelf.length}/${store.shelfCapacity}`));
-    box.appendChild(el('p', { class: 'small' }, `Traffic: ${s.trafficMult >= 1.1 ? 'High' : s.trafficMult >= 1.0 ? 'Medium' : 'Low'}`));
-    box.appendChild(el('h3', {}, 'On shelf'));
-    if (!store.shelf.length) box.appendChild(el('p', { class: 'tiny' }, 'No brands yet — an open opportunity.'));
+    box.appendChild(el('h2', {}, storeName(s.id)));
+    box.appendChild(el('p', { class: 'small' }, `${STORE_TYPE_LABELS[s.type]} · ${DISTRICT_LABELS[s.district]} · ชั้นวาง ${store.shelf.length}/${store.shelfCapacity}`));
+    box.appendChild(el('p', { class: 'small' }, `ลูกค้าเข้าร้าน: ${s.trafficMult >= 1.1 ? 'คึกคัก' : s.trafficMult >= 1.0 ? 'ปานกลาง' : 'เงียบ'}`));
+    box.appendChild(el('h3', {}, 'สินค้าบนชั้นวาง'));
+    if (!store.shelf.length) box.appendChild(el('p', { class: 'tiny' }, 'ยังไม่มีแบรนด์ไหนวางขาย — โอกาสเปิดกว้าง'));
     for (const sl of store.shelf) {
       const c = byId(game.companies, sl.companyId), ci = game.companies.indexOf(c);
       const prod = byId(c.products, sl.productId);
-      box.appendChild(el('div', { class: 'storechip' }, [el('span', { class: 'swatch', style: `background:${COMPANY_COLOR_CSS[ci]}` }), `${c.name} — ${POSITION_LABELS[prod?.position] || '?'} $${prod?.price ?? '?'} (${sl.stock} in stock)`]));
+      box.appendChild(el('div', { class: 'storechip' }, [el('span', { class: 'swatch', style: `background:${COMPANY_COLOR_CSS[ci]}` }), `${c.name} — ${POSITION_LABELS[prod?.position] || '?'} $${prod?.price ?? '?'} (สต็อก ${sl.stock})`]));
     }
     const nearbyPop = CITY_V1.buildings.filter((b) => b.kind !== 'hotel' && Math.abs(b.x - s.x) + Math.abs(b.y - s.y) <= 10).reduce((sum, b) => sum + b.residents, 0);
-    box.appendChild(el('h3', {}, 'Broad market'));
-    box.appendChild(el('p', { class: 'tiny' }, `~${nearbyPop} residents live within easy reach.`));
+    box.appendChild(el('h3', {}, 'ตลาดโดยรอบ'));
+    box.appendChild(el('p', { class: 'tiny' }, `มีผู้อยู่อาศัยราว ${nearbyPop} คนในระยะเดินถึง`));
   } else if (ui.selection.kind === 'building') {
     const b = CITY_V1.buildings.find((x) => x.id === ui.selection.id);
-    box.appendChild(el('h2', {}, b.kind === 'hotel' ? (b.touristProfile === 'tourist_budget' ? 'Budget Hotel' : 'Premium Hotel') : b.kind[0].toUpperCase() + b.kind.slice(1)));
+    box.appendChild(el('h2', {}, b.kind === 'hotel' ? (b.touristProfile === 'tourist_budget' ? 'โรงแรมราคาประหยัด' : 'โรงแรมพรีเมียม') : b.kind === 'condo' ? 'คอนโด' : 'บ้านพักอาศัย'));
     box.appendChild(el('p', { class: 'small' }, DISTRICT_LABELS[b.district]));
     box.appendChild(el('p', {}, buildingBlurb(b)));
   } else if (ui.selection.kind === 'building_hq') {
     const c = byId(game.companies, ui.selection.id);
-    box.appendChild(el('h2', {}, c.name + "'s HQ"));
-    box.appendChild(el('p', { class: 'small' }, CITY_V1.hqPlots.find((p) => p.id === c.hqPlotId)?.name || ''));
+    box.appendChild(el('h2', {}, `สำนักงานใหญ่ของ ${c.name}`));
+    box.appendChild(el('p', { class: 'small' }, plotName(c.hqPlotId)));
   }
   $panels.appendChild(box);
 }
@@ -1035,17 +1124,17 @@ function renderInspector() {
 function renderSelling() {
   clear($panels); renderTopbar();
   const speedRow = el('div', { class: 'row' }, [1, 2, 4].map((s) => el('button', { class: s === ui.speed ? 'primary' : '', onclick: () => { ui.speed = s; renderScreen(); } }, `x${s}`)).concat([
-    el('button', { onclick: skipReplay }, 'Skip'),
+    el('button', { onclick: skipReplay }, 'ข้าม'),
   ]));
   const card = el('div', { class: 'card', id: 'sellingHud' }, [
     el('div', { class: 'row between' }, [
-      el('h2', { style: 'margin:0' }, `Round ${game.round} — Selling Phase`),
+      el('h2', { style: 'margin:0' }, `รอบที่ ${game.round} — ช่วงขายสินค้า`),
       speedRow,
     ]),
-    el('p', { class: 'small', id: 'replayPhaseLabel' }, 'Marketing hits the streets…'),
+    el('p', { class: 'small', id: 'replayPhaseLabel' }, 'การตลาดออกสู่ท้องถนน…'),
     el('div', { class: 'progress-outer' }, el('div', { class: 'progress-inner', id: 'replayProgress' })),
     el('button', { class: 'primary', id: 'replayContinueBtn', style: 'margin-top:8px; width:100%', disabled: !replay?.done, onclick: goToSummary },
-      replay?.done ? 'Continue to Round Summary' : 'Selling in progress…'),
+      replay?.done ? 'ดูสรุปรอบ' : 'กำลังขายสินค้า…'),
   ]);
   $panels.appendChild(card);
 }
@@ -1062,17 +1151,17 @@ function renderSummary() {
     countUp(revEl, d.revenue);
     const profitEl = el('b', { style: `color:${d.profit >= 0 ? '#7fe0a0' : '#e08f7f'}` }, '$0');
     countUp(profitEl, Math.abs(d.profit), { prefix: d.profit >= 0 ? '+$' : '-$' });
-    const bestStore = d.bestStoreId ? CITY_V1.stores.find((s) => s.id === d.bestStoreId)?.name : null;
+    const bestStore = d.bestStoreId ? storeName(d.bestStoreId) : null;
     return el('div', { class: 'card summary-card', style: 'position:static;' }, [
       el('h2', { style: `color:${COMPANY_COLOR_CSS[i]}; margin-bottom:4px` }, d.name),
-      el('div', { class: 'row between' }, [el('span', {}, ['Revenue ', revEl]), el('span', {}, `Units ${d.units}`)]),
-      el('p', { class: 'small' }, `Market share this round: ${(d.marketShare * 100).toFixed(0)}%${bestStore ? ` · Best store: ${bestStore}` : ''}`),
+      el('div', { class: 'row between' }, [el('span', {}, ['รายได้ ', revEl]), el('span', {}, `ขายได้ ${d.units} ชิ้น`)]),
+      el('p', { class: 'small' }, `ส่วนแบ่งตลาดรอบนี้: ${(d.marketShare * 100).toFixed(0)}%${bestStore ? ` · ร้านที่ขายดีที่สุด: ${bestStore}` : ''}`),
       el('div', { class: 'finline' }, [
-        finRow('COGS', d.cogs), finRow('Salaries', d.salaries), finRow('Rent', d.rent),
-        finRow('Logistics', d.logistics), finRow('Marketing', d.marketing), finRow('Hiring/Training/Setup', d.other),
+        finRow('ต้นทุนสินค้า', d.cogs), finRow('เงินเดือน', d.salaries), finRow('ค่าเช่า', d.rent),
+        finRow('ค่าขนส่ง', d.logistics), finRow('การตลาด', d.marketing), finRow('จ้าง/ฝึก/ตั้งสำนักงาน', d.other),
       ]),
-      el('div', { class: 'row between', style: 'margin-top:6px' }, [el('span', {}, ['Profit: ', profitEl]), el('span', {}, `Cash $${Math.round(d.cash)}`)]),
-      (d.shelfWon || d.shelfLost) ? el('p', { class: 'small' }, `Shelf: ${d.shelfWon ? `+${d.shelfWon} won ` : ''}${d.shelfLost ? `−${d.shelfLost} lost` : ''}`) : null,
+      el('div', { class: 'row between', style: 'margin-top:6px' }, [el('span', {}, [`${d.profit >= 0 ? 'กำไร' : 'ขาดทุน'}: `, profitEl]), el('span', {}, `เงินสด $${Math.round(d.cash)}`)]),
+      (d.shelfWon || d.shelfLost) ? el('p', { class: 'small' }, `ชั้นวาง: ${d.shelfWon ? `ได้เพิ่ม ${d.shelfWon} ` : ''}${d.shelfLost ? `เสียไป ${d.shelfLost}` : ''}`) : null,
       ...d.notes.map((n) => el('p', { class: 'small', style: `color:${n.tone === 'good' ? '#7fe0a0' : n.tone === 'bad' ? '#e08f7f' : '#e0a35f'}` }, n.text)),
     ]);
   });
@@ -1082,12 +1171,12 @@ function renderSummary() {
   const grid = el('div', { class: data.length > 2 ? 'grid2' : 'row', style: 'align-items:stretch; gap:10px' }, cards);
   const autoRow = humanCount() === 0 ? el('label', { class: 'row small', style: 'gap:6px; justify-content:center' }, [
     el('input', { type: 'checkbox', checked: ui.autoObserver, onchange: (e) => { ui.autoObserver = e.target.checked; } }),
-    'Auto-advance rounds (observer)',
+    'เดินรอบอัตโนมัติ (โหมดผู้ชม)',
   ]) : null;
   const card = el('div', { class: 'card', style: 'width:min(860px,96vw); max-height:88vh; overflow-y:auto' }, [
-    el('h2', {}, `Round ${game.round} Summary${game.finalRound === game.round ? ' — FINAL ROUND' : game.finalRound ? ` (final round: ${game.finalRound})` : ''}`),
+    el('h2', {}, `สรุปรอบที่ ${game.round}${game.finalRound === game.round ? ' — รอบสุดท้าย!' : game.finalRound ? ` (รอบสุดท้ายคือรอบที่ ${game.finalRound})` : ''}`),
     grid, autoRow,
-    el('button', { class: 'primary', style: 'margin-top:14px; width:100%', onclick: proceedAfterSummary }, game.finished ? 'See Match Results' : 'Next Round'),
+    el('button', { class: 'primary', style: 'margin-top:14px; width:100%', onclick: proceedAfterSummary }, game.finished ? 'ดูผลการแข่งขัน' : 'รอบถัดไป'),
   ]);
   $panels.appendChild(el('div', { class: 'overlay' }, card));
   if (humanCount() === 0 && ui.autoObserver && !game.finished) setTimeout(() => { if (ui.screen === 'summary') proceedAfterSummary(); }, 1600);
@@ -1101,25 +1190,25 @@ function renderVictory() {
   const winner = byId(game.companies, game.winnerId);
   const ranked = [...game.companies].sort((a, b) => b.cumulativeRevenue - a.cumulativeRevenue || b.cash - a.cash || b.unitsSoldTotal - a.unitsSoldTotal);
   let tieNote = '';
-  if (ranked[1] && ranked[0].cumulativeRevenue === ranked[1].cumulativeRevenue) tieNote = ranked[0].cash !== ranked[1].cash ? 'Tie-break: cash on hand.' : 'Tie-break: total units sold.';
+  if (ranked[1] && ranked[0].cumulativeRevenue === ranked[1].cumulativeRevenue) tieNote = ranked[0].cash !== ranked[1].cash ? 'ตัดสินผลเสมอด้วยเงินสดคงเหลือ' : 'ตัดสินผลเสมอด้วยจำนวนชิ้นที่ขายได้';
   const telemetryJson = JSON.stringify(telemetry, null, 1);
   const card = el('div', { class: 'card' }, [
-    el('h2', { style: `color:${COMPANY_COLOR_CSS[game.companies.indexOf(winner)]}` }, `🏆 ${winner.name} Wins!`),
-    el('p', { class: 'small' }, tieNote || `Match decided after ${game.round} rounds.`),
-    el('h3', {}, 'Final Standings'),
+    el('h2', { style: `color:${COMPANY_COLOR_CSS[game.companies.indexOf(winner)]}` }, `🏆 ${winner.name} ชนะ!`),
+    el('p', { class: 'small' }, tieNote || `จบการแข่งขันใน ${game.round} รอบ`),
+    el('h3', {}, 'อันดับสุดท้าย'),
     ...ranked.map((c, i) => {
       const ci = game.companies.indexOf(c);
       const slot = matchConfig.slots[ci];
       return el('p', {}, [
         el('span', { class: 'swatch', style: `background:${COMPANY_COLOR_CSS[ci]}` }),
-        `${i + 1}. ${c.name}${slot.type === 'bot' ? ` (Bot — ${ARCHETYPES[slot.archetype].label})` : ''} — $${Math.round(c.cumulativeRevenue)} revenue, $${Math.round(c.cash)} cash, ${c.unitsSoldTotal} units`,
+        `${i + 1}. ${c.name}${slot.type === 'bot' ? ` (${archLabel(slot.archetype)})` : ''} — รายได้ $${Math.round(c.cumulativeRevenue)}, เงินสด $${Math.round(c.cash)}, ขายได้ ${c.unitsSoldTotal} ชิ้น`,
       ]);
     }),
-    el('h3', {}, 'Playtest Telemetry'),
+    el('h3', {}, 'ข้อมูลสถิติการเล่น (สำหรับนักพัฒนา)'),
     el('pre', { style: 'font-size:11px; max-height:150px; overflow:auto; background:#0d0f14; padding:8px; border-radius:6px;' }, telemetryJson),
     el('div', { class: 'row', style: 'margin-top:10px' }, [
-      el('button', { onclick: () => { const blob = new Blob([telemetryJson], { type: 'application/json' }); const a = document.createElement('a'); a.href = URL.createObjectURL(blob); a.download = 'company-economy-telemetry.json'; a.click(); } }, 'Export Telemetry'),
-      el('button', { class: 'primary', style: 'flex:1', onclick: () => { clearSave(); location.reload(); } }, 'New Match'),
+      el('button', { onclick: () => { const blob = new Blob([telemetryJson], { type: 'application/json' }); const a = document.createElement('a'); a.href = URL.createObjectURL(blob); a.download = 'company-economy-telemetry.json'; a.click(); } }, 'ดาวน์โหลดข้อมูลสถิติ'),
+      el('button', { class: 'primary', style: 'flex:1', onclick: () => { clearSave(); location.reload(); } }, 'เริ่มเกมใหม่'),
     ]),
   ]);
   $panels.appendChild(el('div', { class: 'overlay' }, card));
@@ -1140,9 +1229,9 @@ function renderTopbar() {
     if (i < game.companies.length - 1) $topbar.appendChild(el('span', { class: 'tb-sep' }, '|'));
   });
   $topbar.appendChild(el('span', { class: 'tb-sep' }, '|'));
-  $topbar.appendChild(el('span', {}, `Round ${game.round} / target $${(game.rules || TUNING).revenueTarget}${game.finalRound ? ' (final!)' : ''}`));
+  $topbar.appendChild(el('span', {}, `รอบ ${game.round} / เป้าหมาย $${(game.rules || TUNING).revenueTarget}${game.finalRound ? ' (โค้งสุดท้าย!)' : ''}`));
   $topbar.appendChild(el('span', { class: 'tb-sep' }, '|'));
-  $topbar.appendChild(el('span', {}, ui.screen === 'selling' ? 'Selling Phase' : `Phase: ${game.phase}`));
+  $topbar.appendChild(el('span', {}, ui.screen === 'selling' ? 'ช่วงขายสินค้า' : 'ช่วงวางแผน'));
 }
 
 const SCREEN_RENDERERS = { setup: renderSetup, transition: renderTransition, hq: renderHq, planning: renderPlanning, selling: renderSelling, summary: renderSummary, victory: renderVictory };

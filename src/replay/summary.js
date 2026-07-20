@@ -24,14 +24,14 @@ export function summarizeRound(state, roundEvents) {
       if (sl.stock === 0) soldOutSlots++;
     }
     const notes = [];
-    if (ownSlots === 0) notes.push({ tone: 'warn', text: 'Not on any shelf — pitch stores to start selling.' });
-    if (soldOutSlots > 0 && units > 0) notes.push({ tone: 'good', text: `Sold out at ${soldOutSlots} store slot(s) — demand exceeded supply; ship more.` });
-    if (deliveriesFailed > 0) notes.push({ tone: 'warn', text: `${deliveriesFailed} delivery failure(s) hurt reliability and relationships.` });
-    if (deliveriesWasted > 0) notes.push({ tone: 'warn', text: `${deliveriesWasted} shipment(s) wasted — no shelf slot at destination.` });
-    if (shelfLost > 0) notes.push({ tone: 'warn', text: `Lost ${shelfLost} shelf slot(s) to competitors.` });
-    if (shelfWon > 0) notes.push({ tone: 'good', text: `Won ${shelfWon} new shelf slot(s).` });
-    if (co.insolvent) notes.push({ tone: 'bad', text: 'Payroll exceeded cash — an employee left. Rebuild your cash buffer.' });
-    if ((fin.revenue || 0) === 0 && round > 1) notes.push({ tone: 'warn', text: 'No revenue this round — check shelf, stock, price, and reach.' });
+    if (ownSlots === 0) notes.push({ tone: 'warn', text: 'ยังไม่ได้ขึ้นชั้นวางร้านไหนเลย — เข้าเสนอขายร้านค้าเพื่อเริ่มขาย' });
+    if (soldOutSlots > 0 && units > 0) notes.push({ tone: 'good', text: `ของหมดที่ชั้นวาง ${soldOutSlots} จุด — ความต้องการสูงกว่าสินค้าที่ส่งไป ลองส่งเพิ่ม` });
+    if (deliveriesFailed > 0) notes.push({ tone: 'warn', text: `การจัดส่งล้มเหลว ${deliveriesFailed} ครั้ง — กระทบความน่าเชื่อถือและความสัมพันธ์กับร้านค้า` });
+    if (deliveriesWasted > 0) notes.push({ tone: 'warn', text: `การจัดส่งเสียเปล่า ${deliveriesWasted} ครั้ง — ปลายทางไม่มีพื้นที่ชั้นวาง` });
+    if (shelfLost > 0) notes.push({ tone: 'warn', text: `เสียพื้นที่ชั้นวางให้คู่แข่ง ${shelfLost} จุด` });
+    if (shelfWon > 0) notes.push({ tone: 'good', text: `ได้พื้นที่ชั้นวางใหม่ ${shelfWon} จุด` });
+    if (co.insolvent) notes.push({ tone: 'bad', text: 'เงินสดไม่พอจ่ายเงินเดือน — พนักงานลาออกหนึ่งคน รีบสะสมเงินสดสำรองใหม่' });
+    if ((fin.revenue || 0) === 0 && round > 1) notes.push({ tone: 'warn', text: 'รอบนี้ไม่มีรายได้เลย — ตรวจดูชั้นวาง สต็อก ราคา และระยะการขาย' });
     return {
       companyId: co.id, name: co.name, round,
       revenue: +(fin.revenue || 0).toFixed(1), units,
