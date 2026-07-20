@@ -50,14 +50,35 @@ skip/continue) and assert on engine state via the `window.__ceTest` hook; any
 Mobile viewports are emulated browser windows (no real touch hardware in this
 environment); touch behavior on physical devices remains follow-up validation.
 
-## 5. Deployment status (read-only check)
+## 5. Deployment status (diagnosed)
 
-GitHub Actions for this repository: 27 historical runs, **all `startup_failure`**
-(latest 2026-07-20 01:21 UTC, on the audit branch) — the deploy workflow has never
-started, which points to repository-level Actions/Pages enablement rather than workflow
-content. No run was triggered from this RC branch. Publishing the playtest link stays an
-environment/settings task outside this branch; the game runs from any static server
-(`npm run serve`).
+**Historical failures explained.** All 27 pre-RC runs ended `startup_failure` inside a
+single window (2026-07-19 23:29 UTC → 2026-07-20 01:21 UTC): 24 synthetic
+"BuildFailed" runs (one per push, on every branch, including pushes of the final valid
+workflow file) plus 2 failed and 1 forever-queued `workflow_dispatch` runs of the deploy
+workflow. Pushes after that window create no spurious runs, and a fresh dispatch starts
+normally — so the storm was a GitHub Actions platform incident, not workflow content.
+
+**Current verified state.** Run #4 of `deploy-playtest.yml`
+(id 29774516929, dispatched from `cc/company-economy-release-candidate-v1` @ `47a71d1e`)
+started normally: checkout ✓, Node 22 ✓, **43/43 tests passed on the runner** ✓, then
+`actions/configure-pages@v5` failed with `Get Pages site: Not Found` followed by
+`Create Pages site: Resource not accessible by integration`. Meaning: **GitHub Pages has
+never been enabled for this repository, and a workflow token cannot enable it** — that
+is an owner-only repository setting.
+
+**Owner action required (once).** Open
+<https://github.com/phathompongsae-ops/Company-economy/settings/pages> and under
+**Build and deployment → Source** select **GitHub Actions** (takes effect immediately —
+no Save button). Then re-run the deploy workflow from
+Actions → "Deploy Playtest to GitHub Pages" → Run workflow → branch
+`cc/company-economy-release-candidate-v1`. Expected URL:
+`https://phathompongsae-ops.github.io/Company-economy/`.
+
+The base path was validated locally before dispatching: the repository served under a
+`/Company-economy/` prefix boots to the HQ screen with zero console errors (relative
+entry redirect, no absolute-root asset references, `.nojekyll` present, three.js
+vendored).
 
 ## 6. Honest limitations
 
