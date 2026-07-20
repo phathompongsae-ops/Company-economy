@@ -67,13 +67,19 @@ started normally: checkout ✓, Node 22 ✓, **43/43 tests passed on the runner*
 never been enabled for this repository, and a workflow token cannot enable it** — that
 is an owner-only repository setting.
 
-**Owner action required (once).** Open
-<https://github.com/phathompongsae-ops/Company-economy/settings/pages> and under
-**Build and deployment → Source** select **GitHub Actions** (takes effect immediately —
-no Save button). Then re-run the deploy workflow from
-Actions → "Deploy Playtest to GitHub Pages" → Run workflow → branch
-`cc/company-economy-release-candidate-v1`. Expected URL:
-`https://phathompongsae-ops.github.io/Company-economy/`.
+**Resolution (deployed).** The owner enabled Pages (Settings → Pages → Source: GitHub
+Actions) and set the auto-created `github-pages` environment's deployment-branch policy
+to allow this branch (it initially rejected non-default branches before any runner was
+assigned — run 29778557768 failed with 0 steps for that reason). After both settings,
+run **29779831904** (dispatched from this branch @ `924cf620`) went fully green —
+tests, Configure Pages, artifact upload, and deploy — and GitHub reported the live
+environment URL:
+
+**<https://phathompongsae-ops.github.io/Company-economy/>**
+
+(The CC sandbox's egress policy blocks `github.io`, so the public URL was confirmed via
+GitHub's deployment status rather than opened in-sandbox; the identical commit was
+browser-smoke-tested locally under an identical `/Company-economy/` base path.)
 
 The base path was validated locally before dispatching: the repository served under a
 `/Company-economy/` prefix boots to the HQ screen with zero console errors (relative
