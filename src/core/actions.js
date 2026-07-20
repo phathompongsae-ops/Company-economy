@@ -97,9 +97,11 @@ export function applyAction(state, action) {
     case 'SetPrice': {
       const prod = co.products.find((p) => p.id === action.productId);
       if (!prod) return reject(state, action, 'unknown product');
+      const price = Number(action.price);
+      if (!Number.isFinite(price)) return reject(state, action, 'price must be a finite number');
       const [lo, hi] = POSITIONS[prod.position].priceRange;
-      if (action.price < lo || action.price > hi) return reject(state, action, `price outside ${prod.position} band [${lo},${hi}]`);
-      prod.price = action.price;
+      if (price < lo || price > hi) return reject(state, action, `price outside ${prod.position} band [${lo},${hi}]`);
+      prod.price = price;
       return accept(state, action);
     }
     case 'LaunchMarketing': {
@@ -137,9 +139,16 @@ export function applyAction(state, action) {
       if (!store || !prod) return reject(state, action, 'unknown store or product');
       const d = Math.abs(co.x - store.x) + Math.abs(co.y - store.y);
       if (d > co._caps['logistics.range']) return reject(state, action, `store beyond logistics range (${d} > ${co._caps['logistics.range']})`);
+      // units is optional (defaults to the max shipment size) but when provided it must be a
+      // positive integer — validated before the slot is consumed so a rejected action costs nothing.
+      let units = TUNING.shipmentMaxUnits;
+      if (action.units !== undefined && action.units !== null) {
+        if (!Number.isInteger(action.units) || action.units <= 0) return reject(state, action, 'units must be a positive integer');
+        units = Math.min(action.units, TUNING.shipmentMaxUnits);
+      }
       co._budget.shipments--;
-      co._plans.shipments.push({ storeId: store.id, productId: prod.id, units: Math.min(action.units || TUNING.shipmentMaxUnits, TUNING.shipmentMaxUnits), dist: d });
-      return accept(state, action, { dist: d });
+      co._plans.shipments.push({ storeId: store.id, productId: prod.id, units, dist: d });
+      return accept(state, action, { dist: d, units });
     }
     case 'SubmitTurn':
       return accept(state, action);

@@ -414,6 +414,7 @@ function applyReplayItem(it, instant) {
       if (w) {
         const prof = walkerProfileFor(it.consumerId);
         w.active = true; w.item = it; w.prof = prof;
+        w.sprite.name = it.visualId || '';
         w.sprite.visible = true;
         replay.walkers.push(w);
       }

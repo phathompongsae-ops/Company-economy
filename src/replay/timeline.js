@@ -55,8 +55,12 @@ export function buildSellingTimeline(roundEvents, ctx) {
     if (!from || !to) return;
     const dist = Math.abs(from.x - to.x) + Math.abs(from.y - to.y);
     const walkDur = +Math.min(WINDOW.walkMax, Math.max(WINDOW.walkMin, dist * WINDOW.walkSecPerTile)).toFixed(2);
+    // eventId links each walker 1:1 to its PurchaseEvent; the index fallback keeps
+    // pre-eventId saved states replayable (still unique within a round's purchases).
+    const eventId = e.eventId || `pe-r${e.round}-i${i}`;
     items.push({ t: +spread(i, purchases.length, WINDOW.purchaseStart, WINDOW.purchaseDepartEnd).toFixed(2),
-      kind: 'purchase', consumerId: e.consumerId, from: e.from, storeId: e.storeId,
+      kind: 'purchase', eventId, visualId: `walker-${eventId}`,
+      consumerId: e.consumerId, from: e.from, storeId: e.storeId,
       companyId: e.companyId, productId: e.productId, qty: e.qty, revenue: e.revenue,
       fromPos: from, toPos: to, walkDur });
   });
