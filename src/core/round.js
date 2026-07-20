@@ -33,9 +33,10 @@ export function resolveRound(state) {
   }
   if ((state.finalRound !== null && state.round >= state.finalRound) || state.round >= rules.maxRounds) {
     state.finished = true;
+    const initiativeRank = new Map(state.companies.map((co, i) => [co.id, (i - state.initiativeIndex + state.companies.length) % state.companies.length]));
     const ranked = [...state.companies].sort((a, b) =>
       b.cumulativeRevenue - a.cumulativeRevenue || b.cash - a.cash || b.unitsSoldTotal - a.unitsSoldTotal ||
-      (state.companies[state.initiativeIndex].id === a.id ? -1 : 1));
+      initiativeRank.get(a.id) - initiativeRank.get(b.id));
     state.winnerId = ranked[0].id;
     state.eventLog.push({ t: 'GameEnd', round: state.round, winnerId: state.winnerId, standings: ranked.map((c) => ({ id: c.id, rev: +c.cumulativeRevenue.toFixed(0), cash: +c.cash.toFixed(0) })) });
   }
