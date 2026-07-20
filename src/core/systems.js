@@ -171,7 +171,8 @@ export function resolveConsumers(state) {
     best.co.familiarity[district] = Math.min(TUNING.familiarityCap, (best.co.familiarity[district] || 0) + TUNING.familiarityPerSale * qty);
     const h = best.store.history[best.prod.id] || (best.store.history[best.prod.id] = { unitsLastRound: 0, totalUnits: 0, stockouts: 0 });
     h._thisRound = (h._thisRound || 0) + qty;
-    state.eventLog.push({ t: 'PurchaseEvent', round: state.round, consumerId: consumer.id, from: consumer.homeBuildingId, storeId: best.store.id, companyId: best.co.id, productId: best.prod.id, qty, revenue });
+    const eventId = `purchase-r${state.round}-${state.eventLog.length}`;
+    state.eventLog.push({ t: 'PurchaseEvent', eventId, round: state.round, consumerId: consumer.id, from: consumer.homeBuildingId, storeId: best.store.id, companyId: best.co.id, productId: best.prod.id, qty, revenue });
     state.debugLog.push({ t: 'ConsumerChoice', round: state.round, consumerId: consumer.id, profile: consumer.profileId,
       chosen: { storeId: best.store.id, productId: best.prod.id, dist: best.d, ...best.u },
       alternatives: options.slice(1, 4).map((o) => ({ storeId: o.store.id, productId: o.prod.id, dist: o.d, total: o.u.total })) });
