@@ -1,0 +1,13 @@
+# TEMPORARY diagnostic probe — minimal possible workflow to isolate whether the
+# repeated startup_failure is account/repo-level (this fails too) or specific to the
+# Pages workflow (this runs). Will be removed once diagnosis is complete.
+name: Probe
+on:
+  push:
+    branches: [feature/playtest-build-v1]
+  workflow_dispatch:
+jobs:
+  probe:
+    runs-on: ubuntu-latest
+    steps:
+      - run: echo "probe ok"
