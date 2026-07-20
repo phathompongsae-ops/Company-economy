@@ -16,8 +16,8 @@ Full guide: `docs/qa/playtest-guide-v1.md`
 
 ## Develop
 
-- `npm test` — full headless test suite (39 tests, no install needed)
+- `npm test` — full headless and independent regression suite (44 tests, no install needed)
 - `npm run simulate` — scripted-scenario runner
 - `node src/sim/lab.js --all --seeds 20` — bot balance lab
 
-Docs: `docs/game-design/` (design, bots, balance) · `docs/technical/` (runtime architecture)
+Docs: `docs/game-design/` (design, bots, balance) · `docs/technical/` (runtime architecture) · `docs/qa/` (playtest and independent audit evidence)
