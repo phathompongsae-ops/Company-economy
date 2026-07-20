@@ -97,9 +97,11 @@ export function applyAction(state, action) {
     case 'SetPrice': {
       const prod = co.products.find((p) => p.id === action.productId);
       if (!prod) return reject(state, action, 'unknown product');
+      const price = Number(action.price);
+      if (!Number.isFinite(price)) return reject(state, action, 'price must be a finite number');
       const [lo, hi] = POSITIONS[prod.position].priceRange;
-      if (action.price < lo || action.price > hi) return reject(state, action, `price outside ${prod.position} band [${lo},${hi}]`);
-      prod.price = action.price;
+      if (price < lo || price > hi) return reject(state, action, `price outside ${prod.position} band [${lo},${hi}]`);
+      prod.price = price;
       return accept(state, action);
     }
     case 'LaunchMarketing': {
@@ -135,10 +137,12 @@ export function applyAction(state, action) {
       const store = byId(state.stores, action.storeId);
       const prod = co.products.find((p) => p.id === action.productId);
       if (!store || !prod) return reject(state, action, 'unknown store or product');
+      const requestedUnits = action.units === undefined ? TUNING.shipmentMaxUnits : Number(action.units);
+      if (!Number.isInteger(requestedUnits) || requestedUnits <= 0) return reject(state, action, 'shipment units must be a positive integer');
       const d = Math.abs(co.x - store.x) + Math.abs(co.y - store.y);
       if (d > co._caps['logistics.range']) return reject(state, action, `store beyond logistics range (${d} > ${co._caps['logistics.range']})`);
       co._budget.shipments--;
-      co._plans.shipments.push({ storeId: store.id, productId: prod.id, units: Math.min(action.units || TUNING.shipmentMaxUnits, TUNING.shipmentMaxUnits), dist: d });
+      co._plans.shipments.push({ storeId: store.id, productId: prod.id, units: Math.min(requestedUnits, TUNING.shipmentMaxUnits), dist: d });
       return accept(state, action, { dist: d });
     }
     case 'SubmitTurn':
