@@ -1,0 +1,132 @@
+<!doctype html>
+<html lang="th">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta name="theme-color" content="#101428">
+  <title>God Brave — หอคอยผู้กล้า</title>
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+  <div class="pixel-sky" aria-hidden="true"></div>
+  <main id="app">
+    <section id="setup-screen" class="screen setup-screen">
+      <header class="hero-title">
+        <p class="eyebrow">PIXEL FANTASY AUTO-BATTLER</p>
+        <h1>GOD <span>BRAVE</span></h1>
+        <p>รวบรวมกองกล้า 4 คน พิชิตหอคอย 20 ชั้น และเขียนตำนานบทใหม่</p>
+      </header>
+
+      <div class="setup-grid">
+        <section class="panel">
+          <div class="panel-heading">
+            <div><small>ขั้นที่ 1</small><h2>เลือกกองกล้า <b id="party-count">4/4</b></h2></div>
+            <select id="preset-select" aria-label="รูปแบบปาร์ตี้"></select>
+          </div>
+          <div id="class-grid" class="class-grid"></div>
+        </section>
+
+        <aside class="panel run-card">
+          <div class="tower-emblem" aria-hidden="true">✦</div>
+          <h2>การเดินทางครั้งใหม่</h2>
+          <p>บอสชั้นสุดท้ายจะสุ่มจากกลุ่มที่ควบคุมไว้ ทุก seed เล่นซ้ำได้เหมือนเดิม</p>
+          <label>รหัสโลก
+            <input id="seed-input" inputmode="numeric" maxlength="10" value="20260722">
+          </label>
+          <div class="feature-list">
+            <span>20 ชั้น</span><span>จุดวางแผนทุก 5 ชั้น</span>
+            <span>อุปกรณ์สุ่ม</span><span>ความลับถาวร</span>
+          </div>
+          <button id="start-button" class="button primary">เริ่มสำรวจหอคอย</button>
+          <button id="continue-button" class="button ghost" hidden>เล่นต่อจากบันทึก</button>
+        </aside>
+      </div>
+    </section>
+
+    <section id="game-screen" class="screen game-screen" hidden>
+      <header class="game-header">
+        <div class="brand-mini">GOD <b>BRAVE</b></div>
+        <div class="floor-progress">
+          <div><strong id="floor-label">ชั้น 1</strong><span id="encounter-label">กำลังเตรียมพร้อม</span></div>
+          <div class="floor-track"><i id="floor-fill"></i></div>
+        </div>
+        <div class="header-stats">
+          <span>BREAK <b id="break-count">0</b></span>
+          <span>BRAVE ARTS <b id="brave-count">0</b></span>
+        </div>
+      </header>
+
+      <div class="game-layout">
+        <section id="combat-panel" class="combat-panel panel">
+          <div class="combat-toolbar">
+            <div class="live-dot"><i></i><span id="combat-state">กำลังต่อสู้</span></div>
+            <div class="toolbar-actions">
+              <label>แผน
+                <select id="tactic-select"></select>
+              </label>
+              <button id="tactical-button" class="chip active" aria-pressed="true">Tactical Auto</button>
+              <label class="toggle"><input id="autorun-toggle" type="checkbox" checked><span></span>วิ่งต่ออัตโนมัติ</label>
+              <select id="speed-select" aria-label="ความเร็ว">
+                <option value="1">×1</option><option value="2">×2</option><option value="4">×4</option>
+              </select>
+              <button id="next-battle-button" class="chip" hidden>ชั้นถัดไป</button>
+              <button id="view-button" class="icon-button" title="ย่อหน้าต่างต่อสู้">▣</button>
+            </div>
+          </div>
+          <div class="canvas-shell">
+            <canvas id="battle-canvas" width="960" height="500" aria-label="สนามต่อสู้ด้านข้าง"></canvas>
+            <div id="brave-meter" class="brave-meter"><span>BRAVE</span><div><i></i></div><b>0%</b></div>
+          </div>
+          <div id="battle-log" class="battle-log" aria-live="polite"></div>
+        </section>
+
+        <aside class="side-column">
+          <section class="panel party-panel">
+            <div class="panel-heading compact"><h2>กองกล้า</h2><button id="save-button" class="text-button">บันทึก</button></div>
+            <div id="party-list" class="party-list"></div>
+          </section>
+          <section class="panel loot-panel">
+            <div class="panel-heading compact"><h2>ของที่พบ</h2><span id="loot-count">0 ชิ้น</span></div>
+            <div id="loot-list" class="loot-list"><p class="muted">ยังไม่พบอุปกรณ์</p></div>
+          </section>
+          <section class="panel secret-panel">
+            <details>
+              <summary>บันทึกลับ <span id="secret-count">0/4</span></summary>
+              <div id="secret-list"></div>
+            </details>
+          </section>
+          <button id="retreat-button" class="button danger">ถอนตัวจากหอคอย</button>
+        </aside>
+      </div>
+    </section>
+  </main>
+
+  <div id="checkpoint-modal" class="modal" hidden>
+    <div class="modal-card checkpoint-card">
+      <p class="eyebrow">STRATEGY CHECKPOINT</p>
+      <h2>พักวางแผน — ผ่านชั้น <span id="checkpoint-floor">5</span></h2>
+      <p>เลือกพรชั่วคราว 1 ข้อ จัดแนวรบ และใช้แต้มสกิลก่อนเดินทางต่อ</p>
+      <div id="blessing-grid" class="blessing-grid"></div>
+      <div id="skill-grid" class="skill-grid"></div>
+      <button id="continue-floor-button" class="button primary" disabled>ไปยังชั้นถัดไป</button>
+    </div>
+  </div>
+
+  <div id="result-modal" class="modal" hidden>
+    <div class="modal-card result-card">
+      <div id="result-emblem" class="result-emblem">✦</div>
+      <p id="result-kicker" class="eyebrow">RUN COMPLETE</p>
+      <h2 id="result-title">ชัยชนะ</h2>
+      <p id="result-text"></p>
+      <div id="result-stats" class="result-stats"></div>
+      <div class="result-actions">
+        <button id="new-run-button" class="button primary">เริ่มการเดินทางใหม่</button>
+        <button id="close-result-button" class="button ghost">ดูบันทึกการเดินทาง</button>
+      </div>
+    </div>
+  </div>
+
+  <div id="toast" class="toast" role="status"></div>
+  <script type="module" src="src/app.js"></script>
+</body>
+</html>
