@@ -3,6 +3,10 @@ import {
   deserializeGame, retreat, serializeGame, setFormation, spendSkillPoint, tick
 } from './core.js';
 import { PARTY_PRESETS } from './data.js';
+import {
+  HERO_FORMATION_ANCHORS, HERO_SPRITE_STANDARD, HERO_VISUALS, PROJECTILE_HERO_CLASSES,
+  drawHero, drawHeroPortrait
+} from './hero-visuals.js';
 
 const SAVE_KEY = 'god-brave-save-v1';
 const $ = selector => document.querySelector(selector);
@@ -22,7 +26,7 @@ const refs = {
   blessingGrid: $('#blessing-grid'), skillGrid: $('#skill-grid'), nextFloor: $('#continue-floor-button'),
   result: $('#result-modal'), resultEmblem: $('#result-emblem'), resultKicker: $('#result-kicker'),
   resultTitle: $('#result-title'), resultText: $('#result-text'), resultStats: $('#result-stats'),
-  newRun: $('#new-run-button'), closeResult: $('#close-result-button'), toast: $('#toast')
+  resultParty: $('#result-party'), newRun: $('#new-run-button'), closeResult: $('#close-result-button'), toast: $('#toast')
 };
 
 let selected = new Set(PARTY_PRESETS[0].classes);
@@ -31,6 +35,7 @@ let lastTime = performance.now();
 let transitionAt = 0;
 let lastEventId = 0;
 let effects = [];
+let visualStates = new Map();
 let resultShown = false;
 const ctx = refs.canvas.getContext('2d');
 ctx.imageSmoothingEnabled = false;
@@ -47,10 +52,12 @@ function init() {
 function renderClassGrid() {
   refs.classGrid.innerHTML = Object.values(CLASS_DEFS).map(def => `
     <label class="class-card ${selected.has(def.id) ? 'selected' : ''}" style="--class-color:${def.color}">
-      <input type="checkbox" value="${def.id}" ${selected.has(def.id) ? 'checked' : ''}>
-      <span class="class-portrait"><i class="pixel-head"></i></span>
-      <span><small>${def.role}</small><h3>${def.name}</h3><p>${def.skill.name}</p></span>
+      <input type="checkbox" value="${def.id}" aria-label="เลือก${def.name}" ${selected.has(def.id) ? 'checked' : ''}>
+      <span class="check-mark" aria-hidden="true">✓</span>
+      <span class="class-portrait"><canvas width="84" height="98" data-hero-portrait="${def.id}" aria-hidden="true"></canvas></span>
+      <span class="class-copy"><small>${def.role}</small><h3>${def.name}</h3><p>${HERO_VISUALS[def.id].identity}</p><em>${def.skill.name}</em></span>
     </label>`).join('');
+  renderHeroCanvases(refs.classGrid);
   refs.count.textContent = `${selected.size}/4`;
   refs.start.disabled = selected.size !== 4;
   refs.classGrid.querySelectorAll('input').forEach(input => input.addEventListener('change', () => {
@@ -63,6 +70,12 @@ function renderClassGrid() {
     refs.preset.value = '';
     renderClassGrid();
   }));
+}
+
+function renderHeroCanvases(root, state = 'idle') {
+  root.querySelectorAll('[data-hero-portrait]').forEach((canvas, index) => {
+    drawHeroPortrait(canvas, canvas.dataset.heroPortrait, { state, progress: .62, time: index * .47 });
+  });
 }
 
 function bindEvents() {
@@ -110,6 +123,7 @@ function startNewRun() {
   resultShown = false;
   lastEventId = 0;
   effects = [];
+  visualStates.clear();
   refs.tactic.value = game.tactic;
   refs.tactical.classList.add('active');
   refs.tactical.textContent = 'Tactical Auto';
@@ -128,6 +142,9 @@ function loadGame() {
     refs.tactical.classList.toggle('active', game.tacticalAuto);
     refs.tactical.textContent = game.tacticalAuto ? 'Tactical Auto' : 'Full Auto';
     resultShown = false;
+    lastEventId = 0;
+    effects = [];
+    visualStates.clear();
     if (game.status === 'checkpoint') showCheckpoint();
     else if (['victory', 'defeat', 'retreated'].includes(game.status)) showResult(game.status);
     renderUI();
@@ -187,11 +204,44 @@ function captureEvents() {
   const fresh = game.battle.events.filter(event => event.id > lastEventId);
   for (const event of fresh) {
     lastEventId = Math.max(lastEventId, event.id);
+    const sourceHero = game.heroes.find(hero => hero.id === event.source);
+    const targetHero = game.heroes.find(hero => hero.id === event.target);
+    if (sourceHero) {
+      if (event.type === 'brave') setVisualState(sourceHero.id, 'brave', .9);
+      else if (event.type === 'skill' || event.type === 'heal') setVisualState(sourceHero.id, 'skill', .58);
+      else if (event.type === 'hit' || event.type === 'critical') setVisualState(sourceHero.id, 'attack', .36);
+    }
+    if (targetHero && event.type === 'enemyHit') setVisualState(targetHero.id, 'hurt', .32);
+    if (sourceHero && event.target && PROJECTILE_HERO_CLASSES.includes(sourceHero.classId) && ['hit', 'critical', 'skill'].includes(event.type)) {
+      const sourceIndex = game.heroes.findIndex(hero => hero.id === sourceHero.id);
+      const from = heroPosition(sourceIndex, sourceHero.row);
+      const to = positionForId(event.target);
+      effects.push({
+        type: 'heroProjectile', classId: sourceHero.classId,
+        from: { x: from.x + 22, y: from.y - 38 }, to: { x: to.x - 8, y: to.y - 30 },
+        life: .42, max: .42
+      });
+    }
     const pos = positionForId(event.target || event.source);
     if (['hit', 'critical', 'skill', 'brave', 'enemyHit', 'break', 'heal'].includes(event.type)) {
       effects.push({ ...pos, type: event.type, text: event.type === 'break' ? 'BREAK!' : event.type === 'critical' ? 'CRITICAL!' : event.type === 'heal' ? `+${event.value}` : `-${event.value || ''}`, life: event.type === 'brave' ? 1.1 : .65, max: event.type === 'brave' ? 1.1 : .65 });
     }
   }
+}
+
+function setVisualState(id, state, duration) {
+  const priority = { idle: 0, hurt: 1, attack: 2, skill: 3, brave: 4 };
+  const current = visualStates.get(id);
+  if (current?.life > 0 && priority[current.state] > priority[state]) return;
+  if (current?.state === state && current.life > duration * .42) return;
+  visualStates.set(id, { state, life: duration, max: duration });
+}
+
+function visualStateFor(hero) {
+  if (!hero.alive || hero.hp <= 0) return { state: 'ko', progress: 1 };
+  const current = visualStates.get(hero.id);
+  if (!current?.life) return { state: 'idle', progress: 0 };
+  return { state: current.state, progress: 1 - current.life / current.max };
 }
 
 function renderUI() {
@@ -223,6 +273,8 @@ function renderDynamic() {
 function advanceFloor() {
   if (game && beginNextFloor(game)) {
     lastEventId = 0;
+    effects = [];
+    visualStates.clear();
     transitionAt = 0;
     renderUI();
   }
@@ -337,6 +389,12 @@ function showResult(status) {
     [game.stats.braveArts, 'BRAVE ARTS'], [game.stats.loot, 'อุปกรณ์']
   ];
   refs.resultStats.innerHTML = values.map(([value, label]) => `<div><b>${value}</b><small>${label}</small></div>`).join('');
+  refs.resultParty.innerHTML = game.heroes.map(hero => `
+    <span style="--class-color:${CLASS_DEFS[hero.classId].color}">
+      <canvas width="72" height="86" data-hero-portrait="${hero.classId}" aria-hidden="true"></canvas>
+      <b>${hero.name}</b>
+    </span>`).join('');
+  renderHeroCanvases(refs.resultParty, victory ? 'victory' : 'ko');
   saveGame(false);
 }
 
@@ -357,7 +415,7 @@ function positionForId(id) {
 }
 
 function heroPosition(index, row) {
-  const positions = row === 'front' ? [[345, 322], [415, 380], [350, 430], [420, 275]] : [[195, 290], [245, 370], [170, 420], [265, 245]];
+  const positions = HERO_FORMATION_ANCHORS[row] || HERO_FORMATION_ANCHORS.back;
   return { x: positions[index % 4][0], y: positions[index % 4][1] };
 }
 
@@ -369,6 +427,10 @@ function enemyPosition(index, count) {
 function updateEffects(dt) {
   effects.forEach(effect => effect.life -= dt);
   effects = effects.filter(effect => effect.life > 0);
+  visualStates.forEach((visual, id) => {
+    visual.life -= dt;
+    if (visual.life <= 0) visualStates.delete(id);
+  });
 }
 
 function drawBattle(time) {
@@ -403,24 +465,35 @@ function drawDungeon(c, time) {
 
 function drawUnit(c, unit, pos, enemy, time) {
   const alive = unit.alive && unit.hp > 0;
-  const bounce = alive ? Math.sin(time * 4.5 + pos.x) * 2 : 10;
-  c.save(); c.translate(pos.x, pos.y + bounce); if (!alive) { c.globalAlpha = .35; c.rotate(Math.PI / 2); }
-  const scale = unit.boss ? 1.55 : 1;
-  c.scale(enemy ? -scale : scale, scale);
-  c.fillStyle = 'rgba(0,0,0,.3)'; c.fillRect(-24, 31, 53, 8);
-  c.fillStyle = unit.color || CLASS_DEFS[unit.classId]?.color || '#aaa';
-  c.fillRect(-18, -10, 36, 39); c.fillRect(-24, 3, 8, 24); c.fillRect(16, 3, 8, 24);
-  c.fillStyle = enemy ? '#b7a0a0' : '#edc3a0'; c.fillRect(-15, -34, 30, 27);
-  c.fillStyle = unit.color || CLASS_DEFS[unit.classId]?.color || '#aaa'; c.fillRect(-18, -40, 36, 11);
-  c.fillStyle = '#191523'; c.fillRect(-9, -22, 4, 4); c.fillRect(6, -22, 4, 4);
-  c.fillStyle = '#222339'; c.fillRect(-15, 29, 11, 9); c.fillRect(5, 29, 11, 9);
-  if (unit.broken > 0) { c.strokeStyle = '#ffe06d'; c.lineWidth = 3; c.strokeRect(-25, -45, 50, 82); }
-  c.restore();
+  if (!enemy && HERO_VISUALS[unit.classId]) {
+    const visual = visualStateFor(unit);
+    drawHero(c, {
+      classId: unit.classId, x: pos.x, y: pos.y,
+      scale: HERO_SPRITE_STANDARD.combatScale, facing: 1,
+      state: visual.state, progress: visual.progress, time,
+      alpha: alive ? 1 : .48
+    });
+  } else {
+    const bounce = alive ? Math.sin(time * 4.5 + pos.x) * 2 : 10;
+    c.save(); c.translate(pos.x, pos.y + bounce); if (!alive) { c.globalAlpha = .35; c.rotate(Math.PI / 2); }
+    const scale = unit.boss ? 1.55 : 1;
+    c.scale(enemy ? -scale : scale, scale);
+    c.fillStyle = 'rgba(0,0,0,.3)'; c.fillRect(-24, 31, 53, 8);
+    c.fillStyle = unit.color || '#aaa';
+    c.fillRect(-18, -10, 36, 39); c.fillRect(-24, 3, 8, 24); c.fillRect(16, 3, 8, 24);
+    c.fillStyle = '#b7a0a0'; c.fillRect(-15, -34, 30, 27);
+    c.fillStyle = unit.color || '#aaa'; c.fillRect(-18, -40, 36, 11);
+    c.fillStyle = '#191523'; c.fillRect(-9, -22, 4, 4); c.fillRect(6, -22, 4, 4);
+    c.fillStyle = '#222339'; c.fillRect(-15, 29, 11, 9); c.fillRect(5, 29, 11, 9);
+    if (unit.broken > 0) { c.strokeStyle = '#ffe06d'; c.lineWidth = 3; c.strokeRect(-25, -45, 50, 82); }
+    c.restore();
+  }
   if (!alive) return;
   const width = unit.boss ? 100 : 70;
   const ratio = Math.max(0, unit.hp / unit.maxHp);
-  c.fillStyle = '#0c0d16'; c.fillRect(pos.x - width / 2, pos.y - (unit.boss ? 94 : 61), width, 7);
-  c.fillStyle = enemy ? '#e15b61' : '#68c77b'; c.fillRect(pos.x - width / 2 + 1, pos.y - (unit.boss ? 93 : 60), (width - 2) * ratio, 5);
+  const hpY = pos.y - (unit.boss ? 94 : enemy ? 61 : 82);
+  c.fillStyle = '#0c0d16'; c.fillRect(pos.x - width / 2, hpY, width, 7);
+  c.fillStyle = enemy ? '#e15b61' : '#68c77b'; c.fillRect(pos.x - width / 2 + 1, hpY + 1, (width - 2) * ratio, 5);
   if (enemy && unit.breakMax) {
     c.fillStyle = '#0c0d16'; c.fillRect(pos.x - width / 2, pos.y - (unit.boss ? 83 : 51), width, 5);
     c.fillStyle = '#55c8df'; c.fillRect(pos.x - width / 2 + 1, pos.y - (unit.boss ? 82 : 50), (width - 2) * unit.breakGauge / unit.breakMax, 3);
@@ -430,6 +503,25 @@ function drawUnit(c, unit, pos, enemy, time) {
 function drawEffect(c, effect) {
   const progress = 1 - effect.life / effect.max;
   c.save(); c.globalAlpha = Math.max(0, 1 - progress);
+  if (effect.type === 'heroProjectile') {
+    const eased = 1 - Math.pow(1 - progress, 2);
+    const x = effect.from.x + (effect.to.x - effect.from.x) * eased;
+    const y = effect.from.y + (effect.to.y - effect.from.y) * eased - Math.sin(Math.PI * progress) * 9;
+    if (effect.classId === 'ranger') {
+      c.strokeStyle = '#f6ead0'; c.lineWidth = 3; c.beginPath(); c.moveTo(x - 15, y + 2); c.lineTo(x + 9, y - 2); c.stroke();
+      c.fillStyle = '#bde58b'; c.fillRect(x + 7, y - 5, 7, 6); c.fillRect(x - 15, y - 1, 5, 5);
+    } else if (effect.classId === 'mage') {
+      c.fillStyle = 'rgba(112,226,228,.22)'; c.fillRect(x - 12, y - 12, 24, 24);
+      c.fillStyle = '#70e2e4'; c.fillRect(x - 7, y - 7, 14, 14);
+      c.fillStyle = '#e9ffff'; c.fillRect(x - 3, y - 3, 6, 6);
+    } else {
+      c.fillStyle = 'rgba(255,224,132,.24)'; c.fillRect(x - 11, y - 11, 22, 22);
+      c.fillStyle = '#ffe084'; c.fillRect(x - 3, y - 10, 6, 20); c.fillRect(x - 10, y - 3, 20, 6);
+      c.fillStyle = '#fff8df'; c.fillRect(x - 3, y - 3, 6, 6);
+    }
+    c.restore();
+    return;
+  }
   if (effect.type === 'hit' || effect.type === 'critical' || effect.type === 'skill') {
     c.strokeStyle = effect.type === 'critical' ? '#ffe26d' : '#f7f0df'; c.lineWidth = effect.type === 'critical' ? 8 : 5;
     c.beginPath(); c.arc(effect.x, effect.y - 12, 24 + progress * 20, -1.2, .8); c.stroke();

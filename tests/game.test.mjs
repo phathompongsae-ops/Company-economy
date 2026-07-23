@@ -126,4 +126,7 @@ test('browser shell is Thai-first, dependency-free and exposes required controls
   assert.doesNotMatch(html, /https?:\/\//);
   assert.match(app, /localStorage/);
   assert.match(app, /drawBattle/);
+  assert.match(app, /hero-visuals\.js/);
+  assert.doesNotMatch(app, /fillRect\(-18, -10, 36, 39\).*CLASS_DEFS/s);
+  assert.doesNotMatch(html, /pixel-head/);
 });
