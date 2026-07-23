@@ -5,6 +5,7 @@ on:
   push:
     branches:
       - coco/god-brave-v1
+      - coco/god-brave-hero-visual-upgrade-v1
 
 permissions:
   contents: read
